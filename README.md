@@ -25,3 +25,13 @@ staff to the tailnet for access). For access from anyone on the internet (e.g. e
 personal phones), run `./start.sh funnel` (needs Funnel enabled in your tailnet ACLs) and set a PIN.
 
 Back up by copying `data/schedule.json`.
+
+## Fedora (always-on) setup
+
+```bash
+git clone -b claude/furniture-fair-scheduler-5za8u1 https://github.com/jlibecap/schedulernew.git
+cd schedulernew && ./deploy/fedora-setup.sh
+```
+Installs Node if needed, builds, runs a `furniture-fair` systemd service on boot, and publishes it with `tailscale serve`.
+Update later with `git pull && npm run build && sudo systemctl restart furniture-fair`.
+Needs HTTPS enabled for your tailnet (Tailscale admin console → DNS → HTTPS Certificates).
