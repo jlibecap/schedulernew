@@ -32,6 +32,6 @@ Back up by copying `data/schedule.json`.
 git clone -b claude/furniture-fair-scheduler-5za8u1 https://github.com/jlibecap/schedulernew.git
 cd schedulernew && ./deploy/fedora-setup.sh
 ```
-Installs Node if needed, builds, runs a `furniture-fair` systemd service on boot, and publishes it with `tailscale serve`.
+Uses local port 3100 and Tailscale HTTPS port 8443 (so it will not replace other apps like Postiz); override with `PORT=` and `TS_HTTPS_PORT=`. Result: `https://<machine>.<tailnet>.ts.net:8443/`.
 Update later with `git pull && npm run build && sudo systemctl restart furniture-fair`.
 Needs HTTPS enabled for your tailnet (Tailscale admin console → DNS → HTTPS Certificates).
