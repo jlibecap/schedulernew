@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Furniture Fair Scheduler
 
-## Getting Started
+Weekly staff scheduler. Hours: Mon–Sat 11a–8p, Sun 11a–6p.
+Shifts: **10:30a–8p**, **12p–8p**, **10:30a–6p** (Sundays only allow 10:30a–6p, since the store closes at 6).
 
-First, run the development server:
+Features: week view, assign people to shifts (one shift per person per day), days-off, hourly
+coverage bars (red = under minimum staff), weekly hours per person, print view.
+Data is stored in `data/schedule.json` (no database or external accounts needed).
+
+## Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run build
+SCHEDULER_PIN=1234 ./start.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Anyone who can open the site can **view** the schedule; only people who click "Manager login"
+and enter `SCHEDULER_PIN` can edit. If `SCHEDULER_PIN` is unset, everyone can edit.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Tailscale
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`start.sh` runs `tailscale serve --bg 3000`, which publishes the app at
+`https://<machine>.<tailnet>.ts.net` to devices on your tailnet (share the node or invite
+staff to the tailnet for access). For access from anyone on the internet (e.g. employees'
+personal phones), run `./start.sh funnel` (needs Funnel enabled in your tailnet ACLs) and set a PIN.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Back up by copying `data/schedule.json`.

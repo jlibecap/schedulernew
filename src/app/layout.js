@@ -1,20 +1,16 @@
-import { AuthProvider } from "@/hooks/useAuth";
 import "./globals.css";
 
 export const metadata = {
-  title: "Cloud Scheduler | Employee Management",
-  description: "Seamlessly create and manage employee schedules with Google integration.",
+  title: "Furniture Fair Scheduler",
+  description: "Weekly staff schedule for Furniture Fair.",
 };
+
+export const viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>
-        <div className="grid-bg"></div>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
