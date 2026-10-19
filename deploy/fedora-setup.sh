@@ -58,5 +58,5 @@ sudo systemctl restart furniture-fair
 
 sudo tailscale serve --bg --https="$TS_HTTPS_PORT" "$PORT"
 echo; tailscale serve status
-echo "Employee view: https://$(tailscale status --json | python3 -c 'import sys,json;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')":$TS_HTTPS_PORT/"
+echo "Employee view: https://$(tailscale status --json | python3 -c 'import sys,json;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):$TS_HTTPS_PORT/"
 echo "Manager page:  same address + /manager"
