@@ -15,8 +15,7 @@ npm run build
 SCHEDULER_PIN=1234 ./start.sh
 ```
 
-Anyone who can open the site can **view** the schedule; only people who click "Manager login"
-and enter `SCHEDULER_PIN` can edit. If `SCHEDULER_PIN` is unset, everyone can edit.
+Two pages: `/` is the read-only employee schedule, and `/manager` is where edits are made (PIN-protected via `SCHEDULER_PIN`; if unset, anyone with the link can edit).
 
 ## Tailscale
 
