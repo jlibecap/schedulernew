@@ -24,6 +24,10 @@ Tap the round **scan button** (phone) or **Scan** (desktop) — or the scan icon
 - **Import more:** *Cocktails → Import* takes a JSON file or one-recipe-per-line text (`Name | Glass | Style | Base | Garnish | Method | 2 oz Gin; 1 oz Lime juice; top Soda water`). Known ingredient names get inventory-matching keywords automatically (see `recipes-library.js`).
 - Add or edit your own recipes; list alternates in "matches" with `|` (e.g. `gin|plymouth`).
 
+## Hosted demo (no server needed)
+
+`node demo/build.mjs` builds `demo/dist/index.html` — the whole app plus an in-browser fake backend (data in the viewer's localStorage, camera and downloads disabled). Handy for showing it off from any static host.
+
 ## Run
 
 ```bash

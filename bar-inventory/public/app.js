@@ -32,7 +32,8 @@ const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toas
 const state = { rcat: "All", rbase: "All", authed: false, pinRequired: false, products: [], recipes: [], rq: "", rtab: "ready", suppliers: [], summary: null, moves: [], q: "", cat: "All", status: "all",
   counts: {}, orderQty: {} };
 const statusOf = (p) => (p.stock <= 0 ? "out" : p.par > 0 && p.stock < p.par ? "low" : "ok");
-const route = () => (location.hash.slice(2) || "dashboard");
+const ask = (m) => (window.__DEMO__ ? true : confirm(m)); // confirm() is blocked in sandboxed frames
+const route = () => (location.hash.slice(1) || "dashboard");
 
 async function load() {
   const [products, suppliers, summary, moves, recipes] = await Promise.all([api("/products"), api("/suppliers"), api("/summary"), api("/movements?limit=80"), api("/recipes")]);
@@ -56,13 +57,13 @@ function render() {
     return;
   }
   const r = route(), low = state.products.filter((p) => statusOf(p) !== "ok").length;
-  const links = (cls) => NAV.map(([k, label, i]) => `<a href="#/${k}" class="${r === k ? "active" : ""}">${ic(i)}<span>${label}</span>${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`).join("");
+  const links = (cls) => NAV.map(([k, label, i]) => `<a href="#${k}" class="${r === k ? "active" : ""}">${ic(i)}<span>${label}</span>${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`).join("");
   app.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><div class="logo">🍸</div><div>Last Call<small>Bar inventory</small></div></div>
     <nav class="nav">${links()}</nav><div class="spacer"></div><a class="btn ghost sm" href="/api/export.csv">${ic("file")} Export CSV</a></aside>
     <main id="view"></main></div>
-    <nav class="tabbar">${["dashboard", "inventory", "cocktails", "reorder"].map((k) => { const [, label, i] = NAV.find((n) => n[0] === k); return `<a href="#/${k}" class="${r === k ? "active" : ""}">${ic(i)}${label}${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`; }).join("")}<a href="#" id="more" class="${["count", "activity", "suppliers"].includes(r) ? "active" : ""}">${ic("more")}More</a></nav>`;
+    <nav class="tabbar">${["dashboard", "inventory", "cocktails", "reorder"].map((k) => { const [, label, i] = NAV.find((n) => n[0] === k); return `<a href="#${k}" class="${r === k ? "active" : ""}">${ic(i)}${label}${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`; }).join("")}<a href="#" id="more" class="${["count", "activity", "suppliers"].includes(r) ? "active" : ""}">${ic("more")}More</a></nav>`;
   app.insertAdjacentHTML("beforeend", `<button class="fab" id="fab" aria-label="Scan barcode">${ic("scan")}</button>`); $("#fab").onclick = () => scanFlow();
-  const more = $("#more"); if (more) more.onclick = (e) => { e.preventDefault(); const o = overlay(`<h1 style="font-size:22px;margin-bottom:14px">More</h1><div class="list">${[["count", "Stock count"], ["activity", "Activity"], ["suppliers", "Suppliers"]].map(([k, l]) => `<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="#/${k}"><b>${l}</b></a>`).join("")}<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="/api/export.csv"><b>Export CSV</b></a></div>`); o.querySelectorAll("a").forEach((a) => (a.onclick = () => o.remove())); };
+  const more = $("#more"); if (more) more.onclick = (e) => { e.preventDefault(); const o = overlay(`<h1 style="font-size:22px;margin-bottom:14px">More</h1><div class="list">${[["count", "Stock count"], ["activity", "Activity"], ["suppliers", "Suppliers"]].map(([k, l]) => `<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="#${k}"><b>${l}</b></a>`).join("")}<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="/api/export.csv"><b>Export CSV</b></a></div>`); o.querySelectorAll("a").forEach((a) => (a.onclick = () => o.remove())); };
   (views[r] || views.dashboard)($("#view"));
 }
 window.addEventListener("hashchange", () => state.authed && render());
@@ -83,18 +84,18 @@ views.dashboard = (el) => {
       <div class="card stat"><div class="label">${ic("drop")} Used · 7 days</div><div class="value">${money(s.week.used)}</div><div class="hint">${money(s.week.wasted)} wasted</div></div>
       <div class="card stat"><div class="label">${ic("down")} Received · 7 days</div><div class="value">${money(s.week.received)}</div><div class="hint">${s.products} products tracked</div></div></div>
     ${suggestHtml()}
-    <div class="grid cols"><div class="card"><h2>Needs attention</h2>${low.length ? `<div class="list" style="margin-top:14px">${low.slice(0, 6).map(itemRow).join("")}</div>${low.length > 6 ? `<a href="#/reorder" class="btn sm" style="margin-top:14px">See all ${low.length} →</a>` : ""}` : `<div class="empty"><div class="big">🎉</div>Everything is above par.</div>`}</div>
+    <div class="grid cols"><div class="card"><h2>Needs attention</h2>${low.length ? `<div class="list" style="margin-top:14px">${low.slice(0, 6).map(itemRow).join("")}</div>${low.length > 6 ? `<a href="#reorder" class="btn sm" style="margin-top:14px">See all ${low.length} →</a>` : ""}` : `<div class="empty"><div class="big">🎉</div>Everything is above par.</div>`}</div>
     <div class="grid" style="align-content:start"><div class="card"><h2>Stock value by category</h2><div class="bars">${cats.map(([c, v]) => `<div class="bar"><div class="top"><span>${esc(c)}</span><span>${money(v)}</span></div><div class="track"><div class="fill" style="width:${(v / max) * 100}%"></div></div></div>`).join("") || '<p class="sub">No products yet.</p>'}</div></div>
     <div class="card"><h2>Usage & waste · last 7 days</h2><div class="spark">${days.map(([d, v]) => `<div title="${money(v)}"><i style="height:${(v / dmax) * 85 + 4}%"></i>${new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "narrow" })}</div>`).join("")}</div></div></div></div>`;
   bindItems(el); bindDrinks(el);
   $("#d-scan").onclick = () => scanFlow();
-  $("#d-count").onclick = () => (location.hash = "#/count");
+  $("#d-count").onclick = () => (location.hash = "#count");
   $("#d-recv").onclick = () => pickProduct("receive");
 };
 
 function suggestHtml() {
   const ready = state.recipes.map((r) => ({ r, a: analyze(r) })).filter((x) => x.a.ready).sort((a, b) => b.r.favorite - a.r.favorite).slice(0, 4);
-  return `<div class="card" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><h2>🍹 What you can make right now</h2><a href="#/cocktails" class="btn sm">All cocktails →</a></div>
+  return `<div class="card" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><h2>🍹 What you can make right now</h2><a href="#cocktails" class="btn sm">All cocktails →</a></div>
     ${ready.length ? `<div class="grid drinks" style="margin-top:14px">${ready.map((x) => drinkCard(x.r)).join("")}</div>` : '<p class="sub" style="margin-top:8px">Stock a few more ingredients to unlock suggestions.</p>'}</div>`;
 }
 // ---------- inventory ----------
@@ -189,7 +190,7 @@ function productForm(p = {}) {
     e.preventDefault(); const body = Object.fromEntries(new FormData(e.target));
     await api(p.id ? `/products/${p.id}` : "/products", p.id ? "PUT" : "POST", body); o.remove(); await load(); render(); toast("Saved");
   });
-  if (p.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Remove ${p.name}? History is kept.`)) return; await api(`/products/${p.id}`, "DELETE"); o.remove(); await load(); render(); toast("Removed"); });
+  if (p.id) $("#del", o).onclick = guard(async () => { if (!ask(`Remove ${p.name}? History is kept.`)) return; await api(`/products/${p.id}`, "DELETE"); o.remove(); await load(); render(); toast("Removed"); });
 }
 
 // ---------- count ----------
@@ -252,7 +253,7 @@ function supplierForm(s = {}) {
   const o = overlay(`<h1 style="font-size:22px;margin-bottom:18px">${s.id ? "Edit" : "New"} supplier</h1><form id="sf">${f("name", "Name")}${f("contact", "Contact person")}${f("phone", "Phone", "tel")}${f("email", "Email", "email")}
     <div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(s.notes ?? "")}</textarea></div><div class="row"><button class="btn primary" style="flex:1;justify-content:center">Save</button>${s.id ? `<button type="button" class="btn danger" id="del">${ic("trash")}</button>` : ""}</div></form>`, true);
   $("#sf", o).onsubmit = guard(async (e) => { e.preventDefault(); await api(s.id ? `/suppliers/${s.id}` : "/suppliers", s.id ? "PUT" : "POST", Object.fromEntries(new FormData(e.target))); o.remove(); await load(); render(); });
-  if (s.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Delete ${s.name}?`)) return; await api(`/suppliers/${s.id}`, "DELETE"); o.remove(); await load(); render(); });
+  if (s.id) $("#del", o).onclick = guard(async () => { if (!ask(`Delete ${s.name}?`)) return; await api(`/suppliers/${s.id}`, "DELETE"); o.remove(); await load(); render(); });
 }
 
 // ---------- cocktails ----------
@@ -380,7 +381,7 @@ function recipeForm(r = { ingredients: [{ label: "", match: "", amount: 1, unit:
       e.preventDefault(); const body = { ...Object.fromEntries(new FormData(f)), ingredients: rows };
       await api(r.id ? `/recipes/${r.id}` : "/recipes", r.id ? "PUT" : "POST", body); o.remove(); await load(); render(); toast("Recipe saved");
     });
-    if (r.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Delete ${r.name}?`)) return; await api(`/recipes/${r.id}`, "DELETE"); o.remove(); await load(); render(); });
+    if (r.id) $("#del", o).onclick = guard(async () => { if (!ask(`Delete ${r.name}?`)) return; await api(`/recipes/${r.id}`, "DELETE"); o.remove(); await load(); render(); });
   };
   paint();
 }
@@ -429,6 +430,7 @@ function openScanner({ title = "Scan barcode", modes, onMode, onCode }) {
   $("#sman", o).onsubmit = (e) => { e.preventDefault(); const v = $("#sin", o).value.trim(); $("#sin", o).value = ""; if (v) { last = ""; fire(v); } };
   o.querySelectorAll("#smodes button").forEach((b) => (b.onclick = () => { o.querySelectorAll("#smodes button").forEach((x) => x.classList.toggle("on", x === b)); onMode?.(b.dataset.m); }));
   (async () => {
+    if (window.__DEMO__) { $("#smsg", o).innerHTML = "Camera is disabled in this hosted demo.<br>Tap a sample barcode below, or type one."; $("#sres", o).insertAdjacentHTML("beforebegin", `<div class="row" style="margin:12px 16px 0;gap:6px">${state.products.filter((p) => p.barcode).slice(0, 5).map((p) => `<button class="btn sm" data-bc="${esc(p.barcode)}">${esc(p.name)}</button>`).join("")}</div>`); o.querySelectorAll("[data-bc]").forEach((b) => (b.onclick = () => { last = ""; fire(b.dataset.bc); })); return; }
     if (!navigator.mediaDevices?.getUserMedia) { $("#smsg", o).innerHTML = `Camera needs a secure connection.<br>Open the <b>https://…ts.net</b> address (see README: <code>tailscale serve</code>) — or type the code below.`; return; }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
