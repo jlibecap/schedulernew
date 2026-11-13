@@ -1,0 +1,13 @@
+{
+  "name": "bar-inventory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Modern bar inventory & management system. Zero dependencies, SQLite storage, made to be served over Tailscale.",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "demo": "node --disable-warning=ExperimentalWarning server.js --demo",
+    "tailscale": "tailscale serve --bg --https=443 http://127.0.0.1:3100"
+  }
+}
