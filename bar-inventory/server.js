@@ -5,6 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { LIBRARY, parseRecipes } from "./recipes-library.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3100);
@@ -49,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_mov_product ON movements(product_id);
 
 try { db.exec("ALTER TABLE products ADD COLUMN tags TEXT DEFAULT ''"); } catch { /* already migrated */ }
 try { db.exec("ALTER TABLE products ADD COLUMN barcode TEXT DEFAULT ''"); } catch { /* already migrated */ }
+for (const col of ["category TEXT DEFAULT ''", "base TEXT DEFAULT ''", "source TEXT DEFAULT 'custom'"]) { try { db.exec(`ALTER TABLE recipes ADD COLUMN ${col}`); } catch { /* exists */ } }
 const MOVE_TYPES = new Set(["receive", "use", "waste", "count", "adjust"]);
 const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -210,16 +212,16 @@ route("GET", "/api/recipes", () => listRecipes());
 route("POST", "/api/recipes", ({ body }) => {
   if (!str(body.name)) throw new HttpError(400, "Name is required");
   return tx(() => {
-    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish,notes) VALUES(?,?,?,?,?)")
-      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500)).lastInsertRowid);
+    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish,notes,category,base) VALUES(?,?,?,?,?,?,?)")
+      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500), str(body.category, 40), str(body.base, 40)).lastInsertRowid);
     saveIngredients(id, body.ingredients); return { id };
   });
 });
 route("PUT", "/api/recipes/:id", ({ params, body }) => {
   if (!str(body.name)) throw new HttpError(400, "Name is required");
   return tx(() => {
-    db.prepare("UPDATE recipes SET name=?,glass=?,method=?,garnish=?,notes=? WHERE id=?")
-      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500), Number(params.id));
+    db.prepare("UPDATE recipes SET name=?,glass=?,method=?,garnish=?,notes=?,category=?,base=? WHERE id=?")
+      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500), str(body.category, 40), str(body.base, 40), Number(params.id));
     saveIngredients(Number(params.id), body.ingredients); return { ok: true };
   });
 });
@@ -236,40 +238,28 @@ route("POST", "/api/make", ({ body }) => tx(() => {
   return { ok: true };
 }));
 
-// oz-based classics. Ingredient: [label, match keywords (|), amount, unit, optional]
-const CLASSICS = [
-  ["Margarita", "Coupe or rocks", "Shake with ice, strain over fresh ice. Salt the rim if you like.", "Lime wheel", [["Tequila", "tequila", 2, "oz"], ["Orange liqueur", "cointreau|triple sec|orange liqueur", 1, "oz"], ["Lime juice", "lime", 1, "oz"]]],
-  ["Daiquiri", "Coupe", "Shake hard with ice, double strain.", "Lime wheel", [["White rum", "rum", 2, "oz"], ["Lime juice", "lime", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
-  ["Mojito", "Highball", "Gently muddle mint with syrup and lime, add rum and crushed ice, top with soda, stir.", "Mint sprig", [["White rum", "rum", 2, "oz"], ["Lime juice", "lime", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"], ["Mint", "mint", 8, "leaves"], ["Soda water", "soda water|club soda|soda", 2, "oz", 1]]],
-  ["Old Fashioned", "Rocks", "Stir with ice until chilled, strain over a large cube.", "Orange peel", [["Bourbon", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Simple syrup", "simple syrup|syrup|sugar", 0.25, "oz"], ["Bitters", "bitters", 2, "dash"]]],
-  ["Manhattan", "Coupe", "Stir with ice, strain.", "Cherry", [["Bourbon or rye", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"], ["Bitters", "bitters", 2, "dash"]]],
-  ["Negroni", "Rocks", "Stir with ice, strain over a large cube.", "Orange peel", [["Gin", "gin", 1, "oz"], ["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"]]],
-  ["Boulevardier", "Rocks", "Stir with ice, strain over a large cube.", "Orange peel", [["Bourbon", "bourbon|whiskey|whisky|rye", 1.5, "oz"], ["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"]]],
-  ["Gin Martini", "Martini", "Stir with ice until very cold, strain.", "Lemon twist or olive", [["Gin", "gin", 2.5, "oz"], ["Dry vermouth", "vermouth", 0.5, "oz"]]],
-  ["Vodka Martini", "Martini", "Stir (or shake) with ice, strain.", "Olive", [["Vodka", "vodka", 2.5, "oz"], ["Dry vermouth", "vermouth", 0.5, "oz"]]],
-  ["Gin & Tonic", "Highball", "Build over ice, stir once.", "Lime wedge", [["Gin", "gin", 2, "oz"], ["Tonic", "tonic", 4, "oz"]]],
-  ["Vodka Tonic", "Highball", "Build over ice, stir once.", "Lime wedge", [["Vodka", "vodka", 2, "oz"], ["Tonic", "tonic", 4, "oz"]]],
-  ["Moscow Mule", "Copper mug", "Build over ice, stir.", "Lime wedge", [["Vodka", "vodka", 2, "oz"], ["Ginger beer", "ginger beer", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
-  ["Dark 'n' Stormy", "Highball", "Build over ice, float the rum on top.", "Lime wedge", [["Dark rum", "rum", 2, "oz"], ["Ginger beer", "ginger beer", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
-  ["Cuba Libre", "Highball", "Build over ice, stir.", "Lime wedge", [["Rum", "rum", 2, "oz"], ["Cola", "cola|coke", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
-  ["Cosmopolitan", "Martini", "Shake with ice, strain.", "Orange twist", [["Vodka", "vodka", 1.5, "oz"], ["Orange liqueur", "cointreau|triple sec|orange liqueur", 1, "oz"], ["Lime juice", "lime", 0.5, "oz"], ["Cranberry juice", "cranberry", 1, "oz"]]],
-  ["Whiskey Sour", "Rocks", "Shake with ice, strain over fresh ice.", "Lemon wheel & cherry", [["Bourbon", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Lemon juice", "lemon", 0.75, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
-  ["Tom Collins", "Collins", "Shake first three with ice, strain over ice, top with soda.", "Lemon wheel", [["Gin", "gin", 2, "oz"], ["Lemon juice", "lemon", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.5, "oz"], ["Soda water", "soda water|club soda|soda", 3, "oz"]]],
-  ["Gimlet", "Coupe", "Shake with ice, strain.", "Lime wheel", [["Gin", "gin", 2, "oz"], ["Lime juice", "lime", 0.75, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
-  ["Americano", "Highball", "Build over ice, top with soda.", "Orange slice", [["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"], ["Soda water", "soda water|club soda|soda", 2, "oz"]]],
-  ["Aperol Spritz", "Wine glass", "Build over ice, top with soda.", "Orange slice", [["Prosecco", "prosecco|sparkling", 3, "oz"], ["Aperol", "aperol", 2, "oz"], ["Soda water", "soda water|club soda|soda", 1, "oz"]]],
-  ["Paloma", "Highball", "Build over ice, top with soda.", "Grapefruit wedge", [["Tequila", "tequila", 2, "oz"], ["Grapefruit juice", "grapefruit", 3, "oz"], ["Lime juice", "lime", 0.5, "oz"], ["Soda water", "soda water|club soda|soda", 1, "oz", 1]]],
-  ["Mimosa", "Flute", "Pour juice first, top with prosecco.", "", [["Prosecco", "prosecco|sparkling|champagne", 3, "oz"], ["Orange juice", "orange juice", 3, "oz"]]],
-  ["Screwdriver", "Highball", "Build over ice.", "Orange slice", [["Vodka", "vodka", 2, "oz"], ["Orange juice", "orange juice", 4, "oz"]]],
-];
-function seedRecipes() {
-  if (db.prepare("SELECT COUNT(*) c FROM recipes").get().c) return;
-  tx(() => CLASSICS.forEach(([name, glass, method, garnish, ings]) => {
-    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish) VALUES(?,?,?,?)").run(name, glass, method, garnish).lastInsertRowid);
-    saveIngredients(id, ings.map(([label, match, amount, unit, optional]) => ({ label, match, amount, unit, optional })));
+// Add any recipes missing from the DB (matched by name), never touching ones you've edited or favorited.
+function addRecipes(list, source) {
+  const have = new Map(db.prepare("SELECT id, lower(name) n, category FROM recipes").all().map((r) => [r.n, r]));
+  let added = 0, skipped = 0;
+  tx(() => list.forEach((r) => {
+    const name = str(r.name, 120); if (!name) return;
+    const ex = have.get(name.toLowerCase());
+    if (ex) { skipped++; if (source === "library" && !ex.category) db.prepare("UPDATE recipes SET category=?, base=?, source='library' WHERE id=?").run(str(r.category, 40), str(r.base, 40), ex.id); return; }
+    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish,category,base,source) VALUES(?,?,?,?,?,?,?)")
+      .run(name, str(r.glass, 60), str(r.method, 1500), str(r.garnish, 120), str(r.category, 40), str(r.base, 40), source).lastInsertRowid);
+    saveIngredients(id, r.ingredients); have.set(name.toLowerCase(), { id }); added++;
   }));
+  return { added, skipped };
 }
-seedRecipes();
+addRecipes(LIBRARY, "library");
+// Import more: send {recipes:[{name,glass,category,base,garnish,method,ingredients:[{label,match,amount,unit,optional}]}]}
+// or {text:"Name | Glass | Category | Base | Garnish | Method | 2 oz Gin; 1 oz Lime juice"} (see recipes-library.js).
+route("POST", "/api/recipes/import", ({ body }) => {
+  const list = Array.isArray(body.recipes) ? body.recipes.slice(0, 2000) : parseRecipes(String(body.text || "").slice(0, 2e6));
+  if (!list.length) throw new HttpError(400, "No recipes found — check the format");
+  return addRecipes(list, "imported");
+});
 
 // ---- Demo data ---------------------------------------------------------------------------
 function seedDemo() {

@@ -29,7 +29,7 @@ function toast(msg, err) {
 }
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
 
-const state = { authed: false, pinRequired: false, products: [], recipes: [], rq: "", rtab: "ready", suppliers: [], summary: null, moves: [], q: "", cat: "All", status: "all",
+const state = { rcat: "All", rbase: "All", authed: false, pinRequired: false, products: [], recipes: [], rq: "", rtab: "ready", suppliers: [], summary: null, moves: [], q: "", cat: "All", status: "all",
   counts: {}, orderQty: {} };
 const statusOf = (p) => (p.stock <= 0 ? "out" : p.par > 0 && p.stock < p.par ? "low" : "ok");
 const route = () => (location.hash.slice(2) || "dashboard");
@@ -263,7 +263,8 @@ const BRANDS = {
   rum: "bacard|captain morgan|havana|mount gay|appleton|kraken|diplomatico|malibu|goslings|myers|plantation",
   "bourbon|whiskey|whisky|rye": "buffalo trace|maker|jim beam|jack daniel|jameson|bulleit|woodford|four roses|wild turkey|rittenhouse|knob creek|scotch",
 };
-const kwRegex = (kw) => new RegExp(`(^|[^a-z])${kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?([^a-z]|$)`, "i");
+const rxCache = new Map();
+const kwRegex = (kw) => rxCache.get(kw) || (rxCache.set(kw, new RegExp(`(^|[^a-z])${kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?([^a-z]|$)`, "i")), rxCache.get(kw));
 function productMatches(p, match) {
   const hay = [p.name, p.tags, p.category === "Spirits" || p.category === "Liqueurs" ? "" : p.category].join(" ").toLowerCase();
   return match.split("|").some((kw) => {
@@ -277,7 +278,7 @@ function bottleOz(p) {
   const m = String(p.size).toLowerCase().replace(/\s/g, "").match(/^([\d.]+)(ml|cl|l|oz)/); if (!m) return 0;
   const v = +m[1]; return m[2] === "ml" ? v / 29.5735 : m[2] === "cl" ? v / 2.95735 : m[2] === "l" ? v * 33.814 : v;
 }
-const UNIT_OZ = { oz: 1, dash: 0.03, ml: 1 / 29.5735, cl: 1 / 2.95735 };
+const UNIT_OZ = { oz: 1, barspoon: 0.17, tsp: 0.167, dash: 0.03, ml: 1 / 29.5735, cl: 1 / 2.95735 };
 // how many "stock units" of product p one serving of ingredient i uses (0 = not tracked, e.g. leaves, top-ups, produce)
 function perServing(i, p) {
   const oz = UNIT_OZ[i.unit], size = bottleOz(p);
@@ -296,7 +297,7 @@ function analyze(r, servings = 1) {
 const fav = (r) => `<button class="heart ${r.favorite ? "on" : ""}" data-fav="${r.id}" aria-label="Favorite">${ic("heart")}</button>`;
 function drinkCard(r) {
   const a = analyze(r);
-  return `<div class="drink ${a.ready ? "ready" : ""}" data-id="${r.id}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="name">${esc(r.name)}</div><div class="meta">${esc(r.glass)}</div></div>${fav(r)}</div>
+  return `<div class="drink ${a.ready ? "ready" : ""}" data-id="${r.id}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="name">${esc(r.name)}</div><div class="meta">${esc([r.category, r.glass].filter(Boolean).join(" · "))}</div></div>${fav(r)}</div>
     <div class="ings">${a.lines.map((l) => `<span class="ing ${l.ok ? "have" : l.i.optional ? "opt" : "miss"}">${esc(l.i.label)}</span>`).join("")}</div>
     <div class="foot">${a.ready ? '<span class="pill ok">Ready to make</span>' : `<span class="pill ${a.missing.length === 1 ? "low" : "out"}">Missing ${a.missing.length}</span>`}</div></div>`;
 }
@@ -309,19 +310,26 @@ function bindDrinks(el) {
 }
 views.cocktails = (el) => {
   const all = state.recipes.map((r) => ({ r, a: analyze(r) }));
+  const uniq = (k) => [...new Set(state.recipes.map((r) => r[k]).filter(Boolean))].sort();
+  const cats = uniq("category"), bases = uniq("base");
   const tabs = { ready: all.filter((x) => x.a.ready), almost: all.filter((x) => !x.a.ready && x.a.missing.length <= 2 && x.a.missing.length >= 1), fav: all.filter((x) => x.r.favorite), all };
   const names = { ready: "Can make now", almost: "Almost there", fav: "Favorites", all: "All recipes" };
   const q = state.rq.toLowerCase();
-  let rows = tabs[state.rtab].filter((x) => !q || (x.r.name + " " + x.r.ingredients.map((i) => i.label).join(" ")).toLowerCase().includes(q));
+  let rows = tabs[state.rtab].filter((x) => (state.rcat === "All" || x.r.category === state.rcat) && (state.rbase === "All" || x.r.base === state.rbase)).filter((x) => !q || (x.r.name + " " + x.r.ingredients.map((i) => i.label).join(" ")).toLowerCase().includes(q));
   if (state.rtab === "ready") rows.sort((a, b) => b.r.favorite - a.r.favorite);
   if (state.rtab === "almost") rows.sort((a, b) => a.a.missing.length - b.a.missing.length);
-  el.innerHTML = `<div class="head"><div><h1>Cocktails</h1><p class="sub">Recipes matched against what's on your shelves right now.</p></div><button class="btn primary" id="new">${ic("plus")} New recipe</button></div>
-    <div class="toolbar"><div class="search">${ic("search")}<input id="rq" placeholder="Search drinks or ingredients…" value="${esc(state.rq)}"></div></div>
+  el.innerHTML = `<div class="head"><div><h1>Cocktails</h1><p class="sub">Recipes matched against what's on your shelves right now.</p></div><div class="row"><button class="btn" id="imp">${ic("file")} Import</button><button class="btn primary" id="new">${ic("plus")} New recipe</button></div></div>
+    <div class="toolbar"><div class="search">${ic("search")}<input id="rq" placeholder="Search drinks or ingredients…" value="${esc(state.rq)}"></div>
+    <select id="rcat" style="width:auto">${["All", ...cats].map((c) => `<option ${c === state.rcat ? "selected" : ""} value="${esc(c)}">${c === "All" ? "All styles" : esc(c)}</option>`).join("")}</select>
+    <select id="rbase" style="width:auto">${["All", ...bases].map((c) => `<option ${c === state.rbase ? "selected" : ""} value="${esc(c)}">${c === "All" ? "Any base" : esc(c)}</option>`).join("")}</select></div>
     <div class="chips">${Object.keys(names).map((k) => `<button class="chip ${state.rtab === k ? "on" : ""}" data-t="${k}">${names[k]} · ${tabs[k].length}</button>`).join("")}</div>
     <div class="grid drinks">${rows.map((x) => drinkCard(x.r)).join("") || `<div class="empty card" style="grid-column:1/-1"><div class="big">🍹</div>${state.rtab === "fav" ? "Tap the heart on a drink to save it here." : "Nothing here yet — try restocking or check “Almost there”."}</div>`}</div>`;
   $("#rq").oninput = (e) => { state.rq = e.target.value; const pos = e.target.selectionStart; render(); const n = $("#rq"); n.focus(); n.setSelectionRange(pos, pos); };
   el.querySelectorAll(".chip").forEach((c) => (c.onclick = () => { state.rtab = c.dataset.t; render(); }));
   $("#new").onclick = () => recipeForm();
+  $("#imp").onclick = () => importForm();
+  $("#rcat").onchange = (e) => { state.rcat = e.target.value; render(); };
+  $("#rbase").onchange = (e) => { state.rbase = e.target.value; render(); };
   bindDrinks(el);
 };
 function openRecipe(id) {
@@ -330,7 +338,7 @@ function openRecipe(id) {
   const o = overlay("");
   const paint = () => {
     const a = analyze(r, n);
-    $(".drawer", o).innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div><h1 style="font-size:24px">${esc(r.name)}</h1><p class="sub">${esc([r.glass, r.garnish && "Garnish: " + r.garnish].filter(Boolean).join(" · "))}</p></div><div class="row">${fav(r)}<button class="btn sm" id="edit">${ic("edit")}</button></div></div>
+    $(".drawer", o).innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div><h1 style="font-size:24px">${esc(r.name)}</h1><p class="sub">${esc([r.category, r.base && r.base !== "None" ? r.base + " base" : r.base, r.glass, r.garnish && "Garnish: " + r.garnish].filter(Boolean).join(" · "))}</p></div><div class="row">${fav(r)}<button class="btn sm" id="edit">${ic("edit")}</button></div></div>
       <div class="row" style="margin:14px 0"><span class="pill ${a.ready ? "ok" : "out"}">${a.ready ? "Ready to make" : "Missing " + a.missing.map((l) => l.i.label).join(", ")}</span></div>
       <h2>Ingredients <span class="sub" style="font-weight:400">· for ${n} drink${n > 1 ? "s" : ""}</span></h2>
       <div class="hist">${a.lines.map((l) => `<div><span>${l.i.amount ? fmt(l.i.amount * n) + " " + esc(l.i.unit) : esc(l.i.unit === "top" ? "Top with" : "")} <b>${esc(l.i.label)}</b>${l.i.optional ? ' <small style="display:inline">(optional)</small>' : ""}</span>
@@ -356,9 +364,10 @@ function recipeForm(r = { ingredients: [{ label: "", match: "", amount: 1, unit:
     $(".drawer", o).innerHTML = `<h1 style="font-size:22px;margin-bottom:18px">${r.id ? "Edit recipe" : "New recipe"}</h1><form id="rf">
       <div class="field"><label>Name</label><input name="name" required value="${esc(r.name || "")}"></div>
       <div class="two"><div class="field"><label>Glass</label><input name="glass" value="${esc(r.glass || "")}"></div><div class="field"><label>Garnish</label><input name="garnish" value="${esc(r.garnish || "")}"></div></div>
+      <div class="two"><div class="field"><label>Style</label><input name="category" list="rc" value="${esc(r.category || "")}"><datalist id="rc">${[...new Set(state.recipes.map((x) => x.category).filter(Boolean))].map((c) => `<option>${esc(c)}</option>`).join("")}</datalist></div><div class="field"><label>Base spirit</label><input name="base" value="${esc(r.base || "")}" placeholder="Gin, Rum, None…"></div></div>
       <label class="lbl">Ingredients <span style="font-weight:400">— “matches” are the words used to find it in your inventory (separate alternates with |)</span></label>
       ${rows.map((i, n) => `<div class="irow"><input data-k="label" data-n="${n}" placeholder="Name (Gin)" value="${esc(i.label)}"><input data-k="match" data-n="${n}" placeholder="matches (gin|plymouth)" value="${esc(i.match)}">
-        <input data-k="amount" data-n="${n}" type="number" step="any" min="0" value="${i.amount}"><select data-k="unit" data-n="${n}">${["oz", "dash", "ml", "leaves", "top", "each"].map((u) => `<option ${u === i.unit ? "selected" : ""}>${u}</option>`).join("")}</select>
+        <input data-k="amount" data-n="${n}" type="number" step="any" min="0" value="${i.amount}"><select data-k="unit" data-n="${n}">${["oz", "dash", "barspoon", "tsp", "ml", "leaves", "top", "each"].map((u) => `<option ${u === i.unit ? "selected" : ""}>${u}</option>`).join("")}</select>
         <label class="opt"><input type="checkbox" data-k="optional" data-n="${n}" ${i.optional ? "checked" : ""}>opt</label><button type="button" class="btn sm danger" data-rm="${n}">✕</button></div>`).join("")}
       <button type="button" class="btn sm" id="addi" style="margin:6px 0 16px">${ic("plus")} Ingredient</button>
       <div class="field"><label>Method</label><textarea name="method" rows="3">${esc(r.method || "")}</textarea></div>
@@ -451,6 +460,19 @@ function scanFlow() {
     const n = state.products.find((x) => x.id === p.id);
     ui.result(`<b>${mode === "receive" ? "+1" : "−1"} ${esc(n.name)}</b><div class="sub">Now ${fmt(n.stock)} ${esc(n.unit)}</div>`, "ok"); render();
   } });
+}
+
+function importForm() {
+  const o = overlay(`<h1 style="font-size:22px;margin-bottom:6px">Import recipes</h1><p class="sub" style="margin-bottom:14px">Paste JSON or text lines, or choose a file. Existing recipes with the same name are skipped.</p>
+    <input type="file" id="ifile" accept=".json,.txt,.csv" style="margin-bottom:12px"><textarea id="itxt" rows="8" placeholder="One per line:&#10;Name | Glass | Category | Base | Garnish | Method | 2 oz Gin; 1 oz Lime juice; top Soda water"></textarea>
+    <p class="sub" style="margin:8px 0 14px;font-size:12.5px">JSON: an array of {name, glass, category, base, garnish, method, ingredients:[{label, match, amount, unit}]}.</p>
+    <button class="btn primary" id="igo" style="width:100%;justify-content:center">Import</button>`, true);
+  $("#ifile", o).onchange = async (e) => { const f = e.target.files[0]; if (f) $("#itxt", o).value = await f.text(); };
+  $("#igo", o).onclick = guard(async () => {
+    const t = $("#itxt", o).value.trim(); let body;
+    try { const j = JSON.parse(t); body = { recipes: Array.isArray(j) ? j : j.recipes }; } catch { body = { text: t }; }
+    const r = await api("/recipes/import", "POST", body); o.remove(); await load(); render(); toast(`Added ${r.added} recipe${r.added === 1 ? "" : "s"}${r.skipped ? ` · ${r.skipped} already existed` : ""}`);
+  });
 }
 
 boot();
