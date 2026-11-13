@@ -11,6 +11,7 @@ const ICON = {
   trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', drop: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>', up: '<path d="M12 21V7M6 13l6-6 6 6M4 3h16"/>',
   edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', dollar: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>', alert: '<path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',
   glass: '<path d="M5 3h14l-7 9zM12 12v9M8 21h8"/>', heart: '<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/>', more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  scan: '<path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 8v8M11 8v8M15 8v8M18 8v8"/>',
   file: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h6"/>', copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`;
@@ -60,6 +61,7 @@ function render() {
     <nav class="nav">${links()}</nav><div class="spacer"></div><a class="btn ghost sm" href="/api/export.csv">${ic("file")} Export CSV</a></aside>
     <main id="view"></main></div>
     <nav class="tabbar">${["dashboard", "inventory", "cocktails", "reorder"].map((k) => { const [, label, i] = NAV.find((n) => n[0] === k); return `<a href="#/${k}" class="${r === k ? "active" : ""}">${ic(i)}${label}${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`; }).join("")}<a href="#" id="more" class="${["count", "activity", "suppliers"].includes(r) ? "active" : ""}">${ic("more")}More</a></nav>`;
+  app.insertAdjacentHTML("beforeend", `<button class="fab" id="fab" aria-label="Scan barcode">${ic("scan")}</button>`); $("#fab").onclick = () => scanFlow();
   const more = $("#more"); if (more) more.onclick = (e) => { e.preventDefault(); const o = overlay(`<h1 style="font-size:22px;margin-bottom:14px">More</h1><div class="list">${[["count", "Stock count"], ["activity", "Activity"], ["suppliers", "Suppliers"]].map(([k, l]) => `<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="#/${k}"><b>${l}</b></a>`).join("")}<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="/api/export.csv"><b>Export CSV</b></a></div>`); o.querySelectorAll("a").forEach((a) => (a.onclick = () => o.remove())); };
   (views[r] || views.dashboard)($("#view"));
 }
@@ -74,7 +76,7 @@ views.dashboard = (el) => {
   const dmax = Math.max(1, ...days.map((d) => d[1]));
   const hr = new Date().getHours();
   el.innerHTML = `<div class="head"><div><h1>${hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening"} 👋</h1><p class="sub">Here's how the bar is stocked right now.</p></div>
-    <div class="row"><button class="btn" id="d-count">${ic("count")} Start count</button><button class="btn primary" id="d-recv">${ic("down")} Receive delivery</button></div></div>
+    <div class="row"><button class="btn" id="d-scan">${ic("scan")} Scan</button><button class="btn" id="d-count">${ic("count")} Start count</button><button class="btn primary" id="d-recv">${ic("down")} Receive delivery</button></div></div>
     <div class="grid stats">
       <div class="card stat"><div class="label">${ic("dollar")} Stock value (cost)</div><div class="value">${money(s.stockValue)}</div><div class="hint">${money(s.retailValue)} at retail</div></div>
       <div class="card stat"><div class="label">${ic("alert")} Need reordering</div><div class="value" style="color:${s.lowCount ? "var(--warn)" : "var(--ok)"}">${s.lowCount}</div><div class="hint">${s.outCount} completely out</div></div>
@@ -85,6 +87,7 @@ views.dashboard = (el) => {
     <div class="grid" style="align-content:start"><div class="card"><h2>Stock value by category</h2><div class="bars">${cats.map(([c, v]) => `<div class="bar"><div class="top"><span>${esc(c)}</span><span>${money(v)}</span></div><div class="track"><div class="fill" style="width:${(v / max) * 100}%"></div></div></div>`).join("") || '<p class="sub">No products yet.</p>'}</div></div>
     <div class="card"><h2>Usage & waste · last 7 days</h2><div class="spark">${days.map(([d, v]) => `<div title="${money(v)}"><i style="height:${(v / dmax) * 85 + 4}%"></i>${new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "narrow" })}</div>`).join("")}</div></div></div></div>`;
   bindItems(el); bindDrinks(el);
+  $("#d-scan").onclick = () => scanFlow();
   $("#d-count").onclick = () => (location.hash = "#/count");
   $("#d-recv").onclick = () => pickProduct("receive");
 };
@@ -112,7 +115,7 @@ function bindItems(el) {
 views.inventory = (el) => {
   const cats = ["All", ...new Set(state.products.map((p) => p.category))];
   el.innerHTML = `<div class="head"><div><h1>Inventory</h1><p class="sub">${state.products.length} products · tap a row for details, ± for quick adjust</p></div>
-    <button class="btn primary" id="add">${ic("plus")} Add product</button></div>
+    <div class="row"><button class="btn" id="scan">${ic("scan")} Scan</button><button class="btn primary" id="add">${ic("plus")} Add product</button></div></div>
     <div class="toolbar"><div class="search">${ic("search")}<input id="q" placeholder="Search products, suppliers, locations…" value="${esc(state.q)}"></div>
     <select id="st" style="width:auto"><option value="all">All stock</option><option value="low">Low or out</option><option value="out">Out of stock</option></select></div>
     <div class="chips">${cats.map((c) => `<button class="chip ${state.cat === c ? "on" : ""}" data-c="${esc(c)}">${esc(c)}</button>`).join("")}</div><div class="list" id="list"></div>`;
@@ -120,7 +123,7 @@ views.inventory = (el) => {
   const paint = () => {
     const q = state.q.toLowerCase();
     const rows = state.products.filter((p) => (state.cat === "All" || p.category === state.cat) && (state.status === "all" || (state.status === "out" ? statusOf(p) === "out" : statusOf(p) !== "ok"))
-      && (!q || [p.name, p.category, p.supplier_name, p.location, p.size].join(" ").toLowerCase().includes(q)));
+      && (!q || [p.name, p.category, p.supplier_name, p.location, p.size, p.barcode, p.tags].join(" ").toLowerCase().includes(q)));
     $("#list").innerHTML = rows.map(itemRow).join("") || `<div class="empty"><div class="big">🔍</div>No products match.</div>`; bindItems($("#list"));
   };
   paint();
@@ -128,6 +131,7 @@ views.inventory = (el) => {
   $("#st").onchange = (e) => { state.status = e.target.value; paint(); };
   el.querySelectorAll(".chip").forEach((c) => (c.onclick = () => { state.cat = c.dataset.c; render(); }));
   $("#add").onclick = () => productForm();
+  $("#scan").onclick = () => scanFlow();
 };
 
 // ---------- overlays ----------
@@ -158,9 +162,9 @@ async function openProduct(id, mode = "use") {
   });
   $("#edit", o).onclick = () => { o.remove(); productForm(p); };
 }
-function pickProduct(mode) {
+function pickProduct(mode, cb) {
   const o = overlay(`<h1 style="font-size:22px;margin-bottom:14px">Pick a product</h1><input id="pq" placeholder="Search…" autofocus style="margin-bottom:12px"><div class="list" id="pl"></div>`, true);
-  const paint = () => { const q = $("#pq", o).value.toLowerCase(); $("#pl", o).innerHTML = state.products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 30).map((p) => `<div class="item" style="grid-template-columns:1fr auto" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${fmt(p.stock)} on hand</div></div></div>`).join(""); $("#pl", o).querySelectorAll(".item").forEach((it) => (it.onclick = () => { o.remove(); openProduct(+it.dataset.id, mode); })); };
+  const paint = () => { const q = $("#pq", o).value.toLowerCase(); $("#pl", o).innerHTML = state.products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 30).map((p) => `<div class="item" style="grid-template-columns:1fr auto" data-id="${p.id}"><div><div class="name">${esc(p.name)}</div><div class="meta">${fmt(p.stock)} on hand</div></div></div>`).join(""); $("#pl", o).querySelectorAll(".item").forEach((it) => (it.onclick = () => { o.remove(); const pr = state.products.find((x) => x.id === +it.dataset.id); cb ? cb(pr) : openProduct(pr.id, mode); })); };
   paint(); $("#pq", o).oninput = paint;
 }
 function productForm(p = {}) {
@@ -176,9 +180,11 @@ function productForm(p = {}) {
     <div class="two"><div class="field"><label>Par level</label><input name="par" type="number" step="any" min="0" value="${v("par", 0)}"></div>
     ${p.id ? "" : `<div class="field"><label>Opening stock</label><input name="stock" type="number" step="any" min="0" value="0"></div>`}</div>
     <div class="field"><label>Supplier</label><select name="supplier_id"><option value="">— none —</option>${state.suppliers.map((s) => `<option value="${s.id}" ${s.id === p.supplier_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+    <div class="field"><label>Barcode</label><div class="row" style="flex-wrap:nowrap"><input name="barcode" inputmode="numeric" placeholder="Scan or type" value="${v("barcode")}"><button type="button" class="btn" id="bcscan" aria-label="Scan barcode">${ic("scan")}</button></div></div>
     <div class="field"><label>Cocktail keywords <span style="font-weight:400">(helps match recipes, e.g. "tequila, blanco")</span></label><input name="tags" value="${v("tags")}"></div>
     <div class="field"><label>Notes</label><textarea name="notes" rows="2">${v("notes")}</textarea></div>
     <div class="row"><button class="btn primary" style="flex:1;justify-content:center">Save</button>${p.id ? `<button type="button" class="btn danger" id="del">${ic("trash")}</button>` : ""}</div></form>`);
+  $("#bcscan", o).onclick = () => openScanner({ title: "Scan product barcode", onCode: (code, ui) => { $("#pf", o).elements.barcode.value = code; ui.close(); toast("Barcode captured"); } });
   $("#pf", o).onsubmit = guard(async (e) => {
     e.preventDefault(); const body = Object.fromEntries(new FormData(e.target));
     await api(p.id ? `/products/${p.id}` : "/products", p.id ? "PUT" : "POST", body); o.remove(); await load(); render(); toast("Saved");
@@ -190,9 +196,15 @@ function productForm(p = {}) {
 views.count = (el) => {
   const groups = {}; state.products.forEach((p) => (groups[p.location || "Unassigned"] ||= []).push(p));
   el.innerHTML = `<div class="head"><div><h1>Stock count</h1><p class="sub">Enter what's physically on the shelf. Only changed rows are saved, and variances are logged.</p></div>
-    <button class="btn primary" id="save">${ic("count")} Save count</button></div>
+    <div class="row"><button class="btn" id="cscan">${ic("scan")} Scan to count</button><button class="btn primary" id="save">${ic("count")} Save count</button></div></div>
     ${Object.entries(groups).sort().map(([loc, ps]) => `<div class="group"><h2>${esc(loc)} <span class="sub">${ps.length} items</span></h2><div class="card" style="padding:6px 14px"><table>${ps.map((p) => `<tr><td><b>${esc(p.name)}</b><div class="sub">${esc(p.size)}</div></td><td class="sub">System: ${fmt(p.stock)}</td><td style="text-align:right"><input type="number" step="any" min="0" inputmode="decimal" data-id="${p.id}" placeholder="${fmt(p.stock)}" value="${state.counts[p.id] ?? ""}"></td></tr>`).join("")}</table></div></div>`).join("")}`;
   el.querySelectorAll("input[data-id]").forEach((i) => (i.oninput = () => (state.counts[i.dataset.id] = i.value)));
+  $("#cscan").onclick = () => openScanner({ title: "Scan to count — each scan adds 1", onCode: (code, ui) => {
+    const p = findByBarcode(code); if (!p) return ui.result(`<b>Unknown barcode</b><div class="sub">${esc(code)} isn't linked to a product yet.</div>`, "bad");
+    const n = (+state.counts[p.id] || 0) + 1; state.counts[p.id] = String(n);
+    const inp = el.querySelector(`input[data-id="${p.id}"]`); if (inp) inp.value = n;
+    ui.result(`<b>${esc(p.name)}</b><div class="sub">Counted ${n} · system says ${fmt(p.stock)}</div>`, "ok");
+  } });
   $("#save").onclick = guard(async () => {
     const changed = state.products.filter((p) => state.counts[p.id] !== undefined && state.counts[p.id] !== "" && +state.counts[p.id] !== p.stock);
     const entered = Object.values(state.counts).filter((v) => v !== "").length;
@@ -362,6 +374,83 @@ function recipeForm(r = { ingredients: [{ label: "", match: "", amount: 1, unit:
     if (r.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Delete ${r.name}?`)) return; await api(`/recipes/${r.id}`, "DELETE"); o.remove(); await load(); render(); });
   };
   paint();
+}
+
+// ---------- barcode scanning ----------
+const normBc = (c) => String(c).trim().replace(/^0+(?=\d{8,}$)/, ""); // UPC-A (12) vs EAN-13 (leading 0) compare equal
+const findByBarcode = (c) => state.products.find((p) => p.barcode && normBc(p.barcode) === normBc(c));
+let zxPromise;
+const loadZX = () => (zxPromise ||= new Promise((res, rej) => { const s = document.createElement("script"); s.src = "/vendor/zxing.min.js"; s.onload = () => res(window.ZXing); s.onerror = () => rej(new Error("Scanner library failed to load")); document.head.append(s); }));
+async function makeDetector() {
+  if ("BarcodeDetector" in window) {
+    try {
+      const have = await BarcodeDetector.getSupportedFormats();
+      const want = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"].filter((f) => have.includes(f));
+      if (want.length) { const d = new BarcodeDetector({ formats: want }); return async (v) => (await d.detect(v))[0]?.rawValue; }
+    } catch { /* fall through to ZXing */ }
+  }
+  const ZX = await loadZX(), F = ZX.BarcodeFormat, reader = new ZX.MultiFormatReader();
+  reader.setHints(new Map([[ZX.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]], [ZX.DecodeHintType.TRY_HARDER, true]]));
+  const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  return async (v) => {
+    if (!v.videoWidth) return;
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight; ctx.drawImage(v, 0, 0);
+    try { return reader.decode(new ZX.BinaryBitmap(new ZX.HybridBinarizer(new ZX.HTMLCanvasElementLuminanceSource(canvas)))).getText(); } catch { return undefined; }
+  };
+}
+// openScanner({title, modes:[[key,label]], onMode, onCode(code, ui)}) — camera + manual/USB-scanner entry. Stays open for repeat scans.
+function openScanner({ title = "Scan barcode", modes, onMode, onCode }) {
+  const o = document.createElement("div"); o.className = "scan";
+  o.innerHTML = `<div class="scan-top"><b>${esc(title)}</b><button class="btn sm" id="sx">Done</button></div>
+    <div class="scan-view"><video playsinline muted></video><div class="reticle"></div><div class="scan-msg" id="smsg"></div><button class="btn sm torch" id="torch" hidden>🔦</button></div>
+    ${modes ? `<div class="seg" id="smodes" style="margin:12px 16px 0">${modes.map(([k, l], i) => `<button data-m="${k}" class="${i ? "" : "on"}">${esc(l)}</button>`).join("")}</div>` : ""}
+    <div class="scan-result" id="sres"><span class="sub">Point the camera at a barcode</span></div>
+    <form class="scan-manual" id="sman"><input id="sin" inputmode="numeric" placeholder="Or type / scan with a USB scanner…" autocomplete="off"><button class="btn">Go</button></form>`;
+  document.body.append(o);
+  let stream, timer, busy = false, last = "", lastAt = 0, closed = false;
+  const video = $("video", o);
+  const close = () => { closed = true; clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); o.remove(); };
+  const ui = { close, result(html, kind = "") { $("#sres", o).className = "scan-result " + kind; $("#sres", o).innerHTML = html; $("#sres", o).querySelectorAll("[data-run]").forEach((b) => (b.onclick = () => ui.actions[b.dataset.run]?.())); }, actions: {} };
+  const fire = async (code) => {
+    const now = Date.now(); if (code === last && now - lastAt < 2000) return; last = code; lastAt = now;
+    navigator.vibrate?.(60);
+    try { await onCode(code, ui); } catch (e) { ui.result(`<b>${esc(e.message)}</b>`, "bad"); }
+  };
+  $("#sx", o).onclick = close;
+  $("#sman", o).onsubmit = (e) => { e.preventDefault(); const v = $("#sin", o).value.trim(); $("#sin", o).value = ""; if (v) { last = ""; fire(v); } };
+  o.querySelectorAll("#smodes button").forEach((b) => (b.onclick = () => { o.querySelectorAll("#smodes button").forEach((x) => x.classList.toggle("on", x === b)); onMode?.(b.dataset.m); }));
+  (async () => {
+    if (!navigator.mediaDevices?.getUserMedia) { $("#smsg", o).innerHTML = `Camera needs a secure connection.<br>Open the <b>https://…ts.net</b> address (see README: <code>tailscale serve</code>) — or type the code below.`; return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+      if (closed) return stream.getTracks().forEach((t) => t.stop());
+      video.srcObject = stream; await video.play();
+      const track = stream.getVideoTracks()[0];
+      if (track.getCapabilities?.().torch) { const t = $("#torch", o); t.hidden = false; let on = false; t.onclick = () => track.applyConstraints({ advanced: [{ torch: (on = !on) }] }); }
+      const detect = await makeDetector();
+      timer = setInterval(async () => { if (busy || closed || video.readyState < 2) return; busy = true; try { const c = await detect(video); if (c) await fire(c); } catch { /* frame failed */ } busy = false; }, 200);
+    } catch (e) { $("#smsg", o).textContent = e.name === "NotAllowedError" ? "Camera permission denied — allow it in your browser settings, or type the code below." : "Couldn't start the camera: " + e.message; }
+  })();
+  return ui;
+}
+function scanFlow() {
+  let mode = "lookup";
+  openScanner({ title: "Scan barcode", modes: [["lookup", "Look up"], ["receive", "Receive +1"], ["use", "Use −1"]], onMode: (m) => (mode = m), onCode: async (code, ui) => {
+    const p = findByBarcode(code);
+    if (!p) {
+      ui.actions.create = () => { ui.close(); productForm({ barcode: code }); };
+      ui.actions.link = () => { ui.close(); pickProduct("use", guard(async (pr) => { await api(`/products/${pr.id}`, "PUT", { ...pr, barcode: code }); await load(); render(); toast(`Linked to ${pr.name}`); })); };
+      return ui.result(`<b>New barcode</b><div class="sub">${esc(code)} isn't in your inventory yet.</div><div class="row" style="margin-top:12px"><button class="btn primary" data-run="create">New product</button><button class="btn" data-run="link">Link to existing</button></div>`, "bad");
+    }
+    if (mode === "lookup") {
+      const act = (type) => async () => { await api(`/products/${p.id}/move`, "POST", { type, qty: 1, note: "Scanned" }); await load(); const n = state.products.find((x) => x.id === p.id); ui.result(`<b>${esc(n.name)}</b><div class="sub">${type === "receive" ? "+1" : "−1"} saved · now ${fmt(n.stock)} ${esc(n.unit)}</div>`, "ok"); render(); };
+      Object.assign(ui.actions, { use: act("use"), receive: act("receive"), open: () => { ui.close(); openProduct(p.id); } });
+      return ui.result(`<b>${esc(p.name)}</b><div class="sub">${esc([p.category, p.size].filter(Boolean).join(" · "))} · <b>${fmt(p.stock)}</b> ${esc(p.unit)} on hand (par ${fmt(p.par)})</div><div class="row" style="margin-top:12px"><button class="btn" data-run="use">− Use 1</button><button class="btn" data-run="receive">+ Receive 1</button><button class="btn ghost" data-run="open">Details</button></div>`, "ok");
+    }
+    await api(`/products/${p.id}/move`, "POST", { type: mode, qty: 1, note: "Scanned" }); await load();
+    const n = state.products.find((x) => x.id === p.id);
+    ui.result(`<b>${mode === "receive" ? "+1" : "−1"} ${esc(n.name)}</b><div class="sub">Now ${fmt(n.stock)} ${esc(n.unit)}</div>`, "ok"); render();
+  } });
 }
 
 boot();

@@ -6,6 +6,15 @@ Modern, mobile-first bar inventory & management. **Zero npm dependencies** — j
 receive / use / waste logging · guided stock counts with variance tracking · auto reorder sheets grouped by supplier
 (copy / email) · **23 classic cocktail recipes matched to your live stock, favorites, custom recipes, and one-tap "make it" that deducts stock** · full activity log · suppliers · CSV export · optional PIN.
 
+## Barcode scanning
+
+Tap the round **scan button** (phone) or **Scan** (desktop) — or the scan icon inside a product's Barcode field.
+- **Look up** mode shows the product with one-tap *Use 1 / Receive 1*. **Receive +1** and **Use −1** modes apply instantly on every scan, so you can scan a whole delivery bottle by bottle.
+- Unknown barcode? Create a new product with it prefilled, or link it to an existing product. Each barcode can belong to one product.
+- On the **Count** page, *Scan to count* adds 1 to a product's count per scan.
+- Works with the phone camera (native `BarcodeDetector` on Chrome/Android, bundled ZXing fallback for iPhone Safari), and with USB/Bluetooth keyboard-style scanners via the text box.
+- **Phone cameras only work over HTTPS** — use the `https://<machine>.<tailnet>.ts.net` address from `tailscale serve` (Option A below). The plain `http://100.x.y.z` address will still let you type codes, but the browser blocks the camera.
+
 ## Cocktails
 
 - **Can make now / Almost there / Favorites / All** — each recipe's ingredients are matched to your inventory by name, brand (e.g. Espolòn → tequila) or the product's *Cocktail keywords* field, and only count if they're in stock.

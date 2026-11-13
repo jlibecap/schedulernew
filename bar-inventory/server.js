@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_mov_product ON movements(product_id);
 `);
 
 try { db.exec("ALTER TABLE products ADD COLUMN tags TEXT DEFAULT ''"); } catch { /* already migrated */ }
+try { db.exec("ALTER TABLE products ADD COLUMN barcode TEXT DEFAULT ''"); } catch { /* already migrated */ }
 const MOVE_TYPES = new Set(["receive", "use", "waste", "count", "adjust"]);
 const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -60,8 +61,13 @@ const cleanProduct = (b) => ({
   name: str(b.name, 120), category: str(b.category, 60) || "Other", size: str(b.size, 40),
   unit: str(b.unit, 30) || "bottle", cost: Math.max(0, num(b.cost)), price: Math.max(0, num(b.price)),
   par: Math.max(0, num(b.par)), supplier_id: b.supplier_id ? Number(b.supplier_id) : null,
-  location: str(b.location, 60), notes: str(b.notes, 500), tags: str(b.tags, 200),
+  location: str(b.location, 60), notes: str(b.notes, 500), tags: str(b.tags, 200), barcode: str(b.barcode, 64).replace(/\s+/g, ""),
 });
+function checkBarcode(code, selfId = 0) {
+  if (!code) return;
+  const dup = db.prepare("SELECT name FROM products WHERE barcode=? AND archived=0 AND id<>?").get(code, selfId);
+  if (dup) throw new HttpError(409, `Barcode already used by ${dup.name}`);
+}
 function addMovement(productId, type, delta, note) {
   const p = db.prepare("SELECT stock FROM products WHERE id=?").get(productId);
   if (!p) throw new HttpError(404, "Product not found");
@@ -86,9 +92,10 @@ route("GET", "/api/products", () => listProducts());
 route("POST", "/api/products", ({ body }) => {
   const p = cleanProduct(body);
   if (!p.name) throw new HttpError(400, "Name is required");
+  checkBarcode(p.barcode);
   return tx(() => {
-    const id = Number(db.prepare(`INSERT INTO products(name,category,size,unit,cost,price,par,supplier_id,location,notes,tags)
-      VALUES(@name,@category,@size,@unit,@cost,@price,@par,@supplier_id,@location,@notes,@tags)`).run(p).lastInsertRowid);
+    const id = Number(db.prepare(`INSERT INTO products(name,category,size,unit,cost,price,par,supplier_id,location,notes,tags,barcode)
+      VALUES(@name,@category,@size,@unit,@cost,@price,@par,@supplier_id,@location,@notes,@tags,@barcode)`).run(p).lastInsertRowid);
     const stock = Math.max(0, num(body.stock));
     if (stock) addMovement(id, "receive", stock, "Opening stock");
     return { id };
@@ -97,8 +104,9 @@ route("POST", "/api/products", ({ body }) => {
 route("PUT", "/api/products/:id", ({ params, body }) => {
   const p = cleanProduct(body);
   if (!p.name) throw new HttpError(400, "Name is required");
+  checkBarcode(p.barcode, Number(params.id));
   db.prepare(`UPDATE products SET name=@name,category=@category,size=@size,unit=@unit,cost=@cost,price=@price,
-    par=@par,supplier_id=@supplier_id,location=@location,notes=@notes,tags=@tags WHERE id=@id`).run({ ...p, id: Number(params.id) });
+    par=@par,supplier_id=@supplier_id,location=@location,notes=@notes,tags=@tags,barcode=@barcode WHERE id=@id`).run({ ...p, id: Number(params.id) });
   return { ok: true };
 });
 route("DELETE", "/api/products/:id", ({ params }) => {
