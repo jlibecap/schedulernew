@@ -84,7 +84,20 @@ td input { padding: 7px 10px; width: 90px; border-radius: 10px; }
 .toast { background: #f4f5f8; color: #111; padding: 11px 18px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow); animation: pop .2s; }
 .toast.err { background: var(--bad); color: #fff; }
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; } .login .card { width: min(380px, 100%); text-align: center; padding: 32px; } .login .logo { font-size: 44px; margin-bottom: 8px; }
+.drinks { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.drink { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 12px; transition: .15s; }
+.drink:hover { border-color: #39405a; transform: translateY(-2px); } .drink.ready { background: linear-gradient(160deg, rgba(61,220,151,.07), var(--panel) 60%); }
+.drink .name { font-weight: 700; font-size: 16.5px; } .drink .meta { color: var(--muted); font-size: 13px; } .drink .foot { margin-top: auto; }
+.ings { display: flex; flex-wrap: wrap; gap: 6px; } .ing { font-size: 12px; padding: 3px 9px; border-radius: 8px; background: var(--panel2); font-weight: 550; }
+.ing.have { color: var(--ok); } .ing.miss { color: var(--bad); text-decoration: line-through; text-decoration-color: rgba(255,93,108,.5); } .ing.opt { color: var(--muted); }
+.heart { border: 0; background: transparent; color: var(--muted); padding: 6px; border-radius: 10px; display: grid; place-items: center; transition: .15s; } .heart:hover { color: var(--bad); }
+.heart.on { color: var(--bad); } .heart.on svg { fill: var(--bad); } .heart svg { width: 22px; height: 22px; }
+.irow { display: grid; grid-template-columns: 1.1fr 1.2fr 62px 74px auto auto; gap: 6px; margin-bottom: 8px; align-items: center; } .irow input, .irow select { padding: 9px 8px; min-width: 0; }
+.irow .opt { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; align-items: center; } .irow .opt input { width: auto; padding: 0; }
+.lbl { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
 @media (max-width: 860px) {
+  .irow { grid-template-columns: 1fr 1fr 60px 70px; } .irow .opt, .irow .btn { justify-self: start; }
   .shell { display: block; } .side { display: none; } main { padding: 20px 16px 110px; }
   .cols { grid-template-columns: 1fr; } h1 { font-size: 24px; } .level { width: auto; text-align: right; } .level .track, .level small { display: none; } .item { gap: 10px; }
   .tabbar { display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; background: rgba(18,21,28,.92); backdrop-filter: blur(14px); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); justify-content: space-around; }

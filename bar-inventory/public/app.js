@@ -10,6 +10,7 @@ const ICON = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', plus: '<path d="M12 5v14M5 12h14"/>', down: '<path d="M12 3v14M6 11l6 6 6-6M4 21h16"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', drop: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>', up: '<path d="M12 21V7M6 13l6-6 6 6M4 3h16"/>',
   edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', dollar: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>', alert: '<path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',
+  glass: '<path d="M5 3h14l-7 9zM12 12v9M8 21h8"/>', heart: '<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/>', more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   file: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h6"/>', copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`;
@@ -27,14 +28,14 @@ function toast(msg, err) {
 }
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
 
-const state = { authed: false, pinRequired: false, products: [], suppliers: [], summary: null, moves: [], q: "", cat: "All", status: "all",
+const state = { authed: false, pinRequired: false, products: [], recipes: [], rq: "", rtab: "ready", suppliers: [], summary: null, moves: [], q: "", cat: "All", status: "all",
   counts: {}, orderQty: {} };
 const statusOf = (p) => (p.stock <= 0 ? "out" : p.par > 0 && p.stock < p.par ? "low" : "ok");
 const route = () => (location.hash.slice(2) || "dashboard");
 
 async function load() {
-  const [products, suppliers, summary, moves] = await Promise.all([api("/products"), api("/suppliers"), api("/summary"), api("/movements?limit=80")]);
-  Object.assign(state, { products, suppliers, summary, moves });
+  const [products, suppliers, summary, moves, recipes] = await Promise.all([api("/products"), api("/suppliers"), api("/summary"), api("/movements?limit=80"), api("/recipes")]);
+  Object.assign(state, { products, suppliers, summary, moves, recipes });
 }
 async function boot() {
   const s = await api("/session");
@@ -44,7 +45,7 @@ async function boot() {
 }
 
 // ---------- shell ----------
-const NAV = [["dashboard", "Dashboard", "home"], ["inventory", "Inventory", "box"], ["count", "Count", "count"], ["reorder", "Reorder", "cart"], ["activity", "Activity", "log"], ["suppliers", "Suppliers", "users"]];
+const NAV = [["dashboard", "Dashboard", "home"], ["inventory", "Inventory", "box"], ["cocktails", "Cocktails", "glass"], ["count", "Count", "count"], ["reorder", "Reorder", "cart"], ["activity", "Activity", "log"], ["suppliers", "Suppliers", "users"]];
 function render() {
   const app = $("#app");
   if (!state.authed) {
@@ -58,7 +59,8 @@ function render() {
   app.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><div class="logo">🍸</div><div>Last Call<small>Bar inventory</small></div></div>
     <nav class="nav">${links()}</nav><div class="spacer"></div><a class="btn ghost sm" href="/api/export.csv">${ic("file")} Export CSV</a></aside>
     <main id="view"></main></div>
-    <nav class="tabbar">${NAV.slice(0, 5).map(([k, label, i]) => `<a href="#/${k}" class="${r === k ? "active" : ""}">${ic(i)}${label}${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`).join("")}<a href="#/suppliers" class="${r === "suppliers" ? "active" : ""}">${ic("users")}Vendors</a></nav>`;
+    <nav class="tabbar">${["dashboard", "inventory", "cocktails", "reorder"].map((k) => { const [, label, i] = NAV.find((n) => n[0] === k); return `<a href="#/${k}" class="${r === k ? "active" : ""}">${ic(i)}${label}${k === "reorder" && low ? `<span class="badge">${low}</span>` : ""}</a>`; }).join("")}<a href="#" id="more" class="${["count", "activity", "suppliers"].includes(r) ? "active" : ""}">${ic("more")}More</a></nav>`;
+  const more = $("#more"); if (more) more.onclick = (e) => { e.preventDefault(); const o = overlay(`<h1 style="font-size:22px;margin-bottom:14px">More</h1><div class="list">${[["count", "Stock count"], ["activity", "Activity"], ["suppliers", "Suppliers"]].map(([k, l]) => `<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="#/${k}"><b>${l}</b></a>`).join("")}<a class="item" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="/api/export.csv"><b>Export CSV</b></a></div>`); o.querySelectorAll("a").forEach((a) => (a.onclick = () => o.remove())); };
   (views[r] || views.dashboard)($("#view"));
 }
 window.addEventListener("hashchange", () => state.authed && render());
@@ -78,14 +80,20 @@ views.dashboard = (el) => {
       <div class="card stat"><div class="label">${ic("alert")} Need reordering</div><div class="value" style="color:${s.lowCount ? "var(--warn)" : "var(--ok)"}">${s.lowCount}</div><div class="hint">${s.outCount} completely out</div></div>
       <div class="card stat"><div class="label">${ic("drop")} Used · 7 days</div><div class="value">${money(s.week.used)}</div><div class="hint">${money(s.week.wasted)} wasted</div></div>
       <div class="card stat"><div class="label">${ic("down")} Received · 7 days</div><div class="value">${money(s.week.received)}</div><div class="hint">${s.products} products tracked</div></div></div>
+    ${suggestHtml()}
     <div class="grid cols"><div class="card"><h2>Needs attention</h2>${low.length ? `<div class="list" style="margin-top:14px">${low.slice(0, 6).map(itemRow).join("")}</div>${low.length > 6 ? `<a href="#/reorder" class="btn sm" style="margin-top:14px">See all ${low.length} →</a>` : ""}` : `<div class="empty"><div class="big">🎉</div>Everything is above par.</div>`}</div>
     <div class="grid" style="align-content:start"><div class="card"><h2>Stock value by category</h2><div class="bars">${cats.map(([c, v]) => `<div class="bar"><div class="top"><span>${esc(c)}</span><span>${money(v)}</span></div><div class="track"><div class="fill" style="width:${(v / max) * 100}%"></div></div></div>`).join("") || '<p class="sub">No products yet.</p>'}</div></div>
     <div class="card"><h2>Usage & waste · last 7 days</h2><div class="spark">${days.map(([d, v]) => `<div title="${money(v)}"><i style="height:${(v / dmax) * 85 + 4}%"></i>${new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "narrow" })}</div>`).join("")}</div></div></div></div>`;
-  bindItems(el);
+  bindItems(el); bindDrinks(el);
   $("#d-count").onclick = () => (location.hash = "#/count");
   $("#d-recv").onclick = () => pickProduct("receive");
 };
 
+function suggestHtml() {
+  const ready = state.recipes.map((r) => ({ r, a: analyze(r) })).filter((x) => x.a.ready).sort((a, b) => b.r.favorite - a.r.favorite).slice(0, 4);
+  return `<div class="card" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><h2>🍹 What you can make right now</h2><a href="#/cocktails" class="btn sm">All cocktails →</a></div>
+    ${ready.length ? `<div class="grid drinks" style="margin-top:14px">${ready.map((x) => drinkCard(x.r)).join("")}</div>` : '<p class="sub" style="margin-top:8px">Stock a few more ingredients to unlock suggestions.</p>'}</div>`;
+}
 // ---------- inventory ----------
 function itemRow(p) {
   const st = statusOf(p), pct = p.par ? Math.min(100, (p.stock / p.par) * 100) : 100, col = st === "ok" ? "var(--ok)" : st === "low" ? "var(--warn)" : "var(--bad)";
@@ -168,6 +176,7 @@ function productForm(p = {}) {
     <div class="two"><div class="field"><label>Par level</label><input name="par" type="number" step="any" min="0" value="${v("par", 0)}"></div>
     ${p.id ? "" : `<div class="field"><label>Opening stock</label><input name="stock" type="number" step="any" min="0" value="0"></div>`}</div>
     <div class="field"><label>Supplier</label><select name="supplier_id"><option value="">— none —</option>${state.suppliers.map((s) => `<option value="${s.id}" ${s.id === p.supplier_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+    <div class="field"><label>Cocktail keywords <span style="font-weight:400">(helps match recipes, e.g. "tequila, blanco")</span></label><input name="tags" value="${v("tags")}"></div>
     <div class="field"><label>Notes</label><textarea name="notes" rows="2">${v("notes")}</textarea></div>
     <div class="row"><button class="btn primary" style="flex:1;justify-content:center">Save</button>${p.id ? `<button type="button" class="btn danger" id="del">${ic("trash")}</button>` : ""}</div></form>`);
   $("#pf", o).onsubmit = guard(async (e) => {
@@ -232,6 +241,127 @@ function supplierForm(s = {}) {
     <div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(s.notes ?? "")}</textarea></div><div class="row"><button class="btn primary" style="flex:1;justify-content:center">Save</button>${s.id ? `<button type="button" class="btn danger" id="del">${ic("trash")}</button>` : ""}</div></form>`, true);
   $("#sf", o).onsubmit = guard(async (e) => { e.preventDefault(); await api(s.id ? `/suppliers/${s.id}` : "/suppliers", s.id ? "PUT" : "POST", Object.fromEntries(new FormData(e.target))); o.remove(); await load(); render(); });
   if (s.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Delete ${s.name}?`)) return; await api(`/suppliers/${s.id}`, "DELETE"); o.remove(); await load(); render(); });
+}
+
+// ---------- cocktails ----------
+const BRANDS = {
+  tequila: "espol|patr[oó]n|casamigos|don julio|cazadores|olmeca|cuervo|jimador|mezcal|blanco|reposado",
+  vodka: "tito|smirnoff|absolut|grey goose|ketel|stoli|belvedere|svedka|ciroc",
+  gin: "hendrick|tanqueray|bombay|beefeater|aviation|plymouth|gordon|empress|botanist|bluecoat",
+  rum: "bacard|captain morgan|havana|mount gay|appleton|kraken|diplomatico|malibu|goslings|myers|plantation",
+  "bourbon|whiskey|whisky|rye": "buffalo trace|maker|jim beam|jack daniel|jameson|bulleit|woodford|four roses|wild turkey|rittenhouse|knob creek|scotch",
+};
+const kwRegex = (kw) => new RegExp(`(^|[^a-z])${kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?([^a-z]|$)`, "i");
+function productMatches(p, match) {
+  const hay = [p.name, p.tags, p.category === "Spirits" || p.category === "Liqueurs" ? "" : p.category].join(" ").toLowerCase();
+  return match.split("|").some((kw) => {
+    kw = kw.trim(); if (!kw) return false;
+    if (kwRegex(kw).test(hay)) return true;
+    const brand = Object.entries(BRANDS).find(([k]) => k.split("|").includes(kw));
+    return brand ? new RegExp(brand[1], "i").test(hay) : false;
+  });
+}
+function bottleOz(p) {
+  const m = String(p.size).toLowerCase().replace(/\s/g, "").match(/^([\d.]+)(ml|cl|l|oz)/); if (!m) return 0;
+  const v = +m[1]; return m[2] === "ml" ? v / 29.5735 : m[2] === "cl" ? v / 2.95735 : m[2] === "l" ? v * 33.814 : v;
+}
+const UNIT_OZ = { oz: 1, dash: 0.03, ml: 1 / 29.5735, cl: 1 / 2.95735 };
+// how many "stock units" of product p one serving of ingredient i uses (0 = not tracked, e.g. leaves, top-ups, produce)
+function perServing(i, p) {
+  const oz = UNIT_OZ[i.unit], size = bottleOz(p);
+  return oz && size && p.unit === "bottle" ? (i.amount * oz) / size : 0;
+}
+function analyze(r, servings = 1) {
+  const lines = r.ingredients.map((i) => {
+    const cands = state.products.filter((p) => productMatches(p, i.match) && p.stock > 0).sort((a, b) => b.stock - a.stock);
+    const best = cands.find((p) => p.stock + 1e-9 >= perServing(i, p) * servings) || null;
+    const any = state.products.find((p) => productMatches(p, i.match));
+    return { i, product: best, anyProduct: any, use: best ? perServing(i, best) * servings : 0, ok: !!best };
+  });
+  const missing = lines.filter((l) => !l.ok && !l.i.optional);
+  return { lines, missing, ready: !missing.length };
+}
+const fav = (r) => `<button class="heart ${r.favorite ? "on" : ""}" data-fav="${r.id}" aria-label="Favorite">${ic("heart")}</button>`;
+function drinkCard(r) {
+  const a = analyze(r);
+  return `<div class="drink ${a.ready ? "ready" : ""}" data-id="${r.id}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="name">${esc(r.name)}</div><div class="meta">${esc(r.glass)}</div></div>${fav(r)}</div>
+    <div class="ings">${a.lines.map((l) => `<span class="ing ${l.ok ? "have" : l.i.optional ? "opt" : "miss"}">${esc(l.i.label)}</span>`).join("")}</div>
+    <div class="foot">${a.ready ? '<span class="pill ok">Ready to make</span>' : `<span class="pill ${a.missing.length === 1 ? "low" : "out"}">Missing ${a.missing.length}</span>`}</div></div>`;
+}
+function bindDrinks(el) {
+  el.querySelectorAll(".drink").forEach((d) => (d.onclick = (e) => { if (!e.target.closest(".heart")) openRecipe(+d.dataset.id); }));
+  el.querySelectorAll(".heart").forEach((h) => (h.onclick = guard(async (e) => {
+    e.stopPropagation(); const r = state.recipes.find((x) => x.id === +h.dataset.fav);
+    await api(`/recipes/${r.id}/favorite`, "POST", { favorite: !r.favorite }); r.favorite = !r.favorite; render();
+  })));
+}
+views.cocktails = (el) => {
+  const all = state.recipes.map((r) => ({ r, a: analyze(r) }));
+  const tabs = { ready: all.filter((x) => x.a.ready), almost: all.filter((x) => !x.a.ready && x.a.missing.length <= 2 && x.a.missing.length >= 1), fav: all.filter((x) => x.r.favorite), all };
+  const names = { ready: "Can make now", almost: "Almost there", fav: "Favorites", all: "All recipes" };
+  const q = state.rq.toLowerCase();
+  let rows = tabs[state.rtab].filter((x) => !q || (x.r.name + " " + x.r.ingredients.map((i) => i.label).join(" ")).toLowerCase().includes(q));
+  if (state.rtab === "ready") rows.sort((a, b) => b.r.favorite - a.r.favorite);
+  if (state.rtab === "almost") rows.sort((a, b) => a.a.missing.length - b.a.missing.length);
+  el.innerHTML = `<div class="head"><div><h1>Cocktails</h1><p class="sub">Recipes matched against what's on your shelves right now.</p></div><button class="btn primary" id="new">${ic("plus")} New recipe</button></div>
+    <div class="toolbar"><div class="search">${ic("search")}<input id="rq" placeholder="Search drinks or ingredients…" value="${esc(state.rq)}"></div></div>
+    <div class="chips">${Object.keys(names).map((k) => `<button class="chip ${state.rtab === k ? "on" : ""}" data-t="${k}">${names[k]} · ${tabs[k].length}</button>`).join("")}</div>
+    <div class="grid drinks">${rows.map((x) => drinkCard(x.r)).join("") || `<div class="empty card" style="grid-column:1/-1"><div class="big">🍹</div>${state.rtab === "fav" ? "Tap the heart on a drink to save it here." : "Nothing here yet — try restocking or check “Almost there”."}</div>`}</div>`;
+  $("#rq").oninput = (e) => { state.rq = e.target.value; const pos = e.target.selectionStart; render(); const n = $("#rq"); n.focus(); n.setSelectionRange(pos, pos); };
+  el.querySelectorAll(".chip").forEach((c) => (c.onclick = () => { state.rtab = c.dataset.t; render(); }));
+  $("#new").onclick = () => recipeForm();
+  bindDrinks(el);
+};
+function openRecipe(id) {
+  const r = state.recipes.find((x) => x.id === id); if (!r) return;
+  let n = 1;
+  const o = overlay("");
+  const paint = () => {
+    const a = analyze(r, n);
+    $(".drawer", o).innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div><h1 style="font-size:24px">${esc(r.name)}</h1><p class="sub">${esc([r.glass, r.garnish && "Garnish: " + r.garnish].filter(Boolean).join(" · "))}</p></div><div class="row">${fav(r)}<button class="btn sm" id="edit">${ic("edit")}</button></div></div>
+      <div class="row" style="margin:14px 0"><span class="pill ${a.ready ? "ok" : "out"}">${a.ready ? "Ready to make" : "Missing " + a.missing.map((l) => l.i.label).join(", ")}</span></div>
+      <h2>Ingredients <span class="sub" style="font-weight:400">· for ${n} drink${n > 1 ? "s" : ""}</span></h2>
+      <div class="hist">${a.lines.map((l) => `<div><span>${l.i.amount ? fmt(l.i.amount * n) + " " + esc(l.i.unit) : esc(l.i.unit === "top" ? "Top with" : "")} <b>${esc(l.i.label)}</b>${l.i.optional ? ' <small style="display:inline">(optional)</small>' : ""}</span>
+        <span class="${l.ok ? "pos" : "neg"}" style="text-align:right">${l.product ? esc(l.product.name) + `<small>${fmt(l.product.stock)} ${esc(l.product.unit)} in stock</small>` : l.anyProduct ? `${esc(l.anyProduct.name)}<small>out of stock</small>` : "Not in inventory"}</span></div>`).join("")}</div>
+      ${r.method ? `<h2 style="margin:22px 0 6px">Method</h2><p>${esc(r.method)}</p>` : ""}${r.notes ? `<p class="sub" style="margin-top:10px">${esc(r.notes)}</p>` : ""}
+      <div class="row" style="margin-top:24px"><div class="stepper"><button id="m">−</button><b style="min-width:26px;text-align:center">${n}</b><button id="p">+</button></div>
+      <button class="btn primary" id="make" style="flex:1;justify-content:center" ${a.ready ? "" : "disabled"}>${ic("glass")} Make it · deduct stock</button></div>
+      <p class="sub" style="margin-top:8px;font-size:12.5px">Spirits are deducted as fractions of a bottle from pour volume; fresh items and top-ups aren't tracked.</p>`;
+    $("#m", o).onclick = () => { n = Math.max(1, n - 1); paint(); }; $("#p", o).onclick = () => { n = Math.min(20, n + 1); paint(); };
+    $("#edit", o).onclick = () => { o.remove(); recipeForm(r); };
+    $(".heart", o).onclick = guard(async () => { await api(`/recipes/${r.id}/favorite`, "POST", { favorite: !r.favorite }); r.favorite = !r.favorite; paint(); render(); });
+    $("#make", o).onclick = guard(async () => {
+      const deductions = a.lines.filter((l) => l.product && l.use > 0).map((l) => ({ product_id: l.product.id, qty: l.use }));
+      await api("/make", "POST", { label: r.name + (n > 1 ? ` ×${n}` : ""), deductions }); o.remove(); await load(); render(); toast(`${r.name} made · stock updated`);
+    });
+  };
+  paint();
+}
+function recipeForm(r = { ingredients: [{ label: "", match: "", amount: 1, unit: "oz" }] }) {
+  const rows = r.ingredients.map((i) => ({ ...i }));
+  const o = overlay("");
+  const paint = () => {
+    $(".drawer", o).innerHTML = `<h1 style="font-size:22px;margin-bottom:18px">${r.id ? "Edit recipe" : "New recipe"}</h1><form id="rf">
+      <div class="field"><label>Name</label><input name="name" required value="${esc(r.name || "")}"></div>
+      <div class="two"><div class="field"><label>Glass</label><input name="glass" value="${esc(r.glass || "")}"></div><div class="field"><label>Garnish</label><input name="garnish" value="${esc(r.garnish || "")}"></div></div>
+      <label class="lbl">Ingredients <span style="font-weight:400">— “matches” are the words used to find it in your inventory (separate alternates with |)</span></label>
+      ${rows.map((i, n) => `<div class="irow"><input data-k="label" data-n="${n}" placeholder="Name (Gin)" value="${esc(i.label)}"><input data-k="match" data-n="${n}" placeholder="matches (gin|plymouth)" value="${esc(i.match)}">
+        <input data-k="amount" data-n="${n}" type="number" step="any" min="0" value="${i.amount}"><select data-k="unit" data-n="${n}">${["oz", "dash", "ml", "leaves", "top", "each"].map((u) => `<option ${u === i.unit ? "selected" : ""}>${u}</option>`).join("")}</select>
+        <label class="opt"><input type="checkbox" data-k="optional" data-n="${n}" ${i.optional ? "checked" : ""}>opt</label><button type="button" class="btn sm danger" data-rm="${n}">✕</button></div>`).join("")}
+      <button type="button" class="btn sm" id="addi" style="margin:6px 0 16px">${ic("plus")} Ingredient</button>
+      <div class="field"><label>Method</label><textarea name="method" rows="3">${esc(r.method || "")}</textarea></div>
+      <div class="row"><button class="btn primary" style="flex:1;justify-content:center">Save</button>${r.id ? `<button type="button" class="btn danger" id="del">${ic("trash")}</button>` : ""}</div></form>`;
+    const f = $("#rf", o);
+    f.querySelectorAll("[data-k]").forEach((el) => (el.oninput = el.onchange = () => { rows[+el.dataset.n][el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; }));
+    f.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { rows.splice(+b.dataset.rm, 1); paint(); }));
+    $("#addi", o).onclick = () => { rows.push({ label: "", match: "", amount: 1, unit: "oz" }); paint(); };
+    f.onsubmit = guard(async (e) => {
+      e.preventDefault(); const body = { ...Object.fromEntries(new FormData(f)), ingredients: rows };
+      await api(r.id ? `/recipes/${r.id}` : "/recipes", r.id ? "PUT" : "POST", body); o.remove(); await load(); render(); toast("Recipe saved");
+    });
+    if (r.id) $("#del", o).onclick = guard(async () => { if (!confirm(`Delete ${r.name}?`)) return; await api(`/recipes/${r.id}`, "DELETE"); o.remove(); await load(); render(); });
+  };
+  paint();
 }
 
 boot();

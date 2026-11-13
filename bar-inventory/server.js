@@ -35,10 +35,19 @@ CREATE TABLE IF NOT EXISTS movements (
   type TEXT NOT NULL, delta REAL NOT NULL, balance REAL NOT NULL, note TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS recipes (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, glass TEXT DEFAULT '', method TEXT DEFAULT '', garnish TEXT DEFAULT '',
+  notes TEXT DEFAULT '', favorite INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  id INTEGER PRIMARY KEY, recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  label TEXT NOT NULL, match TEXT NOT NULL, amount REAL DEFAULT 0, unit TEXT DEFAULT 'oz', optional INTEGER DEFAULT 0, sort INTEGER DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_mov_created ON movements(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_product ON movements(product_id);
 `);
 
+try { db.exec("ALTER TABLE products ADD COLUMN tags TEXT DEFAULT ''"); } catch { /* already migrated */ }
 const MOVE_TYPES = new Set(["receive", "use", "waste", "count", "adjust"]);
 const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -51,7 +60,7 @@ const cleanProduct = (b) => ({
   name: str(b.name, 120), category: str(b.category, 60) || "Other", size: str(b.size, 40),
   unit: str(b.unit, 30) || "bottle", cost: Math.max(0, num(b.cost)), price: Math.max(0, num(b.price)),
   par: Math.max(0, num(b.par)), supplier_id: b.supplier_id ? Number(b.supplier_id) : null,
-  location: str(b.location, 60), notes: str(b.notes, 500),
+  location: str(b.location, 60), notes: str(b.notes, 500), tags: str(b.tags, 200),
 });
 function addMovement(productId, type, delta, note) {
   const p = db.prepare("SELECT stock FROM products WHERE id=?").get(productId);
@@ -78,8 +87,8 @@ route("POST", "/api/products", ({ body }) => {
   const p = cleanProduct(body);
   if (!p.name) throw new HttpError(400, "Name is required");
   return tx(() => {
-    const id = Number(db.prepare(`INSERT INTO products(name,category,size,unit,cost,price,par,supplier_id,location,notes)
-      VALUES(@name,@category,@size,@unit,@cost,@price,@par,@supplier_id,@location,@notes)`).run(p).lastInsertRowid);
+    const id = Number(db.prepare(`INSERT INTO products(name,category,size,unit,cost,price,par,supplier_id,location,notes,tags)
+      VALUES(@name,@category,@size,@unit,@cost,@price,@par,@supplier_id,@location,@notes,@tags)`).run(p).lastInsertRowid);
     const stock = Math.max(0, num(body.stock));
     if (stock) addMovement(id, "receive", stock, "Opening stock");
     return { id };
@@ -89,7 +98,7 @@ route("PUT", "/api/products/:id", ({ params, body }) => {
   const p = cleanProduct(body);
   if (!p.name) throw new HttpError(400, "Name is required");
   db.prepare(`UPDATE products SET name=@name,category=@category,size=@size,unit=@unit,cost=@cost,price=@price,
-    par=@par,supplier_id=@supplier_id,location=@location,notes=@notes WHERE id=@id`).run({ ...p, id: Number(params.id) });
+    par=@par,supplier_id=@supplier_id,location=@location,notes=@notes,tags=@tags WHERE id=@id`).run({ ...p, id: Number(params.id) });
   return { ok: true };
 });
 route("DELETE", "/api/products/:id", ({ params }) => {
@@ -174,6 +183,85 @@ route("GET", "/api/export.csv", () => {
   for (const p of listProducts()) rows.push([p.name, p.category, p.size, p.unit, p.stock, p.par, p.cost, p.price, p.supplier_name, p.location]);
   return { csv: rows.map((r) => r.map(q).join(",")).join("\n") };
 });
+
+
+// ---- Recipes -----------------------------------------------------------------------------
+const listRecipes = () => {
+  const ing = db.prepare("SELECT * FROM recipe_ingredients ORDER BY recipe_id, sort, id").all();
+  return db.prepare("SELECT * FROM recipes ORDER BY name").all().map((r) => ({ ...r, favorite: !!r.favorite, ingredients: ing.filter((i) => i.recipe_id === r.id) }));
+};
+const saveIngredients = (rid, list) => {
+  db.prepare("DELETE FROM recipe_ingredients WHERE recipe_id=?").run(rid);
+  const ins = db.prepare("INSERT INTO recipe_ingredients(recipe_id,label,match,amount,unit,optional,sort) VALUES(?,?,?,?,?,?,?)");
+  (Array.isArray(list) ? list : []).slice(0, 30).forEach((i, n) => {
+    const label = str(i.label, 80); if (!label) return;
+    ins.run(rid, label, str(i.match, 120).toLowerCase() || label.toLowerCase(), Math.max(0, num(i.amount)), str(i.unit, 20) || "oz", i.optional ? 1 : 0, n);
+  });
+};
+route("GET", "/api/recipes", () => listRecipes());
+route("POST", "/api/recipes", ({ body }) => {
+  if (!str(body.name)) throw new HttpError(400, "Name is required");
+  return tx(() => {
+    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish,notes) VALUES(?,?,?,?,?)")
+      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500)).lastInsertRowid);
+    saveIngredients(id, body.ingredients); return { id };
+  });
+});
+route("PUT", "/api/recipes/:id", ({ params, body }) => {
+  if (!str(body.name)) throw new HttpError(400, "Name is required");
+  return tx(() => {
+    db.prepare("UPDATE recipes SET name=?,glass=?,method=?,garnish=?,notes=? WHERE id=?")
+      .run(str(body.name, 120), str(body.glass, 60), str(body.method, 1500), str(body.garnish, 120), str(body.notes, 500), Number(params.id));
+    saveIngredients(Number(params.id), body.ingredients); return { ok: true };
+  });
+});
+route("DELETE", "/api/recipes/:id", ({ params }) => { db.prepare("DELETE FROM recipes WHERE id=?").run(Number(params.id)); return { ok: true }; });
+route("POST", "/api/recipes/:id/favorite", ({ params, body }) => {
+  db.prepare("UPDATE recipes SET favorite=? WHERE id=?").run(body.favorite ? 1 : 0, Number(params.id)); return { ok: true };
+});
+// Make a drink: deduct the given quantities from stock in one transaction.
+route("POST", "/api/make", ({ body }) => tx(() => {
+  const label = str(body.label, 80) || "Drink";
+  for (const d of Array.isArray(body.deductions) ? body.deductions : []) {
+    const q = Math.abs(num(d.qty)); if (q > 0) addMovement(Number(d.product_id), "use", -q, `Made ${label}`);
+  }
+  return { ok: true };
+}));
+
+// oz-based classics. Ingredient: [label, match keywords (|), amount, unit, optional]
+const CLASSICS = [
+  ["Margarita", "Coupe or rocks", "Shake with ice, strain over fresh ice. Salt the rim if you like.", "Lime wheel", [["Tequila", "tequila", 2, "oz"], ["Orange liqueur", "cointreau|triple sec|orange liqueur", 1, "oz"], ["Lime juice", "lime", 1, "oz"]]],
+  ["Daiquiri", "Coupe", "Shake hard with ice, double strain.", "Lime wheel", [["White rum", "rum", 2, "oz"], ["Lime juice", "lime", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
+  ["Mojito", "Highball", "Gently muddle mint with syrup and lime, add rum and crushed ice, top with soda, stir.", "Mint sprig", [["White rum", "rum", 2, "oz"], ["Lime juice", "lime", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"], ["Mint", "mint", 8, "leaves"], ["Soda water", "soda water|club soda|soda", 2, "oz", 1]]],
+  ["Old Fashioned", "Rocks", "Stir with ice until chilled, strain over a large cube.", "Orange peel", [["Bourbon", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Simple syrup", "simple syrup|syrup|sugar", 0.25, "oz"], ["Bitters", "bitters", 2, "dash"]]],
+  ["Manhattan", "Coupe", "Stir with ice, strain.", "Cherry", [["Bourbon or rye", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"], ["Bitters", "bitters", 2, "dash"]]],
+  ["Negroni", "Rocks", "Stir with ice, strain over a large cube.", "Orange peel", [["Gin", "gin", 1, "oz"], ["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"]]],
+  ["Boulevardier", "Rocks", "Stir with ice, strain over a large cube.", "Orange peel", [["Bourbon", "bourbon|whiskey|whisky|rye", 1.5, "oz"], ["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"]]],
+  ["Gin Martini", "Martini", "Stir with ice until very cold, strain.", "Lemon twist or olive", [["Gin", "gin", 2.5, "oz"], ["Dry vermouth", "vermouth", 0.5, "oz"]]],
+  ["Vodka Martini", "Martini", "Stir (or shake) with ice, strain.", "Olive", [["Vodka", "vodka", 2.5, "oz"], ["Dry vermouth", "vermouth", 0.5, "oz"]]],
+  ["Gin & Tonic", "Highball", "Build over ice, stir once.", "Lime wedge", [["Gin", "gin", 2, "oz"], ["Tonic", "tonic", 4, "oz"]]],
+  ["Vodka Tonic", "Highball", "Build over ice, stir once.", "Lime wedge", [["Vodka", "vodka", 2, "oz"], ["Tonic", "tonic", 4, "oz"]]],
+  ["Moscow Mule", "Copper mug", "Build over ice, stir.", "Lime wedge", [["Vodka", "vodka", 2, "oz"], ["Ginger beer", "ginger beer", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
+  ["Dark 'n' Stormy", "Highball", "Build over ice, float the rum on top.", "Lime wedge", [["Dark rum", "rum", 2, "oz"], ["Ginger beer", "ginger beer", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
+  ["Cuba Libre", "Highball", "Build over ice, stir.", "Lime wedge", [["Rum", "rum", 2, "oz"], ["Cola", "cola|coke", 4, "oz"], ["Lime juice", "lime", 0.5, "oz"]]],
+  ["Cosmopolitan", "Martini", "Shake with ice, strain.", "Orange twist", [["Vodka", "vodka", 1.5, "oz"], ["Orange liqueur", "cointreau|triple sec|orange liqueur", 1, "oz"], ["Lime juice", "lime", 0.5, "oz"], ["Cranberry juice", "cranberry", 1, "oz"]]],
+  ["Whiskey Sour", "Rocks", "Shake with ice, strain over fresh ice.", "Lemon wheel & cherry", [["Bourbon", "bourbon|whiskey|whisky|rye", 2, "oz"], ["Lemon juice", "lemon", 0.75, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
+  ["Tom Collins", "Collins", "Shake first three with ice, strain over ice, top with soda.", "Lemon wheel", [["Gin", "gin", 2, "oz"], ["Lemon juice", "lemon", 1, "oz"], ["Simple syrup", "simple syrup|syrup", 0.5, "oz"], ["Soda water", "soda water|club soda|soda", 3, "oz"]]],
+  ["Gimlet", "Coupe", "Shake with ice, strain.", "Lime wheel", [["Gin", "gin", 2, "oz"], ["Lime juice", "lime", 0.75, "oz"], ["Simple syrup", "simple syrup|syrup", 0.75, "oz"]]],
+  ["Americano", "Highball", "Build over ice, top with soda.", "Orange slice", [["Campari", "campari", 1, "oz"], ["Sweet vermouth", "vermouth", 1, "oz"], ["Soda water", "soda water|club soda|soda", 2, "oz"]]],
+  ["Aperol Spritz", "Wine glass", "Build over ice, top with soda.", "Orange slice", [["Prosecco", "prosecco|sparkling", 3, "oz"], ["Aperol", "aperol", 2, "oz"], ["Soda water", "soda water|club soda|soda", 1, "oz"]]],
+  ["Paloma", "Highball", "Build over ice, top with soda.", "Grapefruit wedge", [["Tequila", "tequila", 2, "oz"], ["Grapefruit juice", "grapefruit", 3, "oz"], ["Lime juice", "lime", 0.5, "oz"], ["Soda water", "soda water|club soda|soda", 1, "oz", 1]]],
+  ["Mimosa", "Flute", "Pour juice first, top with prosecco.", "", [["Prosecco", "prosecco|sparkling|champagne", 3, "oz"], ["Orange juice", "orange juice", 3, "oz"]]],
+  ["Screwdriver", "Highball", "Build over ice.", "Orange slice", [["Vodka", "vodka", 2, "oz"], ["Orange juice", "orange juice", 4, "oz"]]],
+];
+function seedRecipes() {
+  if (db.prepare("SELECT COUNT(*) c FROM recipes").get().c) return;
+  tx(() => CLASSICS.forEach(([name, glass, method, garnish, ings]) => {
+    const id = Number(db.prepare("INSERT INTO recipes(name,glass,method,garnish) VALUES(?,?,?,?)").run(name, glass, method, garnish).lastInsertRowid);
+    saveIngredients(id, ings.map(([label, match, amount, unit, optional]) => ({ label, match, amount, unit, optional })));
+  }));
+}
+seedRecipes();
 
 // ---- Demo data ---------------------------------------------------------------------------
 function seedDemo() {

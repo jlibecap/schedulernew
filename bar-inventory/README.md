@@ -4,7 +4,14 @@ Modern, mobile-first bar inventory & management. **Zero npm dependencies** — j
 
 **Features:** dashboard (stock value, usage/waste, low-stock alerts) · inventory with search/filters and one-tap ± adjust ·
 receive / use / waste logging · guided stock counts with variance tracking · auto reorder sheets grouped by supplier
-(copy / email) · full activity log · suppliers · CSV export · optional PIN.
+(copy / email) · **23 classic cocktail recipes matched to your live stock, favorites, custom recipes, and one-tap "make it" that deducts stock** · full activity log · suppliers · CSV export · optional PIN.
+
+## Cocktails
+
+- **Can make now / Almost there / Favorites / All** — each recipe's ingredients are matched to your inventory by name, brand (e.g. Espolòn → tequila) or the product's *Cocktail keywords* field, and only count if they're in stock.
+- Tap ♥ to favorite. Tap a drink for ingredients (with which of your bottles it'd use), method, and serving count.
+- **Make it** deducts pour volume as a fraction of a bottle (bottle sizes like `750ml`/`1L` are read automatically). Fresh items and top-ups aren't tracked.
+- Add or edit your own recipes; list alternates in "matches" with `|` (e.g. `gin|plymouth`).
 
 ## Run
 
